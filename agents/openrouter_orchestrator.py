@@ -530,10 +530,10 @@ class OpenRouterOrchestrator:
             self.handlers = {}
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt."""
+        """Build the system prompt with dynamic patient context."""
         clinical_prompt = load_clinical_reasoning_prompt()
 
-        return f"""You are a clinical AI assistant for AgentEHR, helping clinicians interact with their Electronic Health Record system.
+        base_prompt = f"""You are a clinical AI assistant for AgentEHR, helping clinicians interact with their Electronic Health Record system.
 
 {clinical_prompt}
 
@@ -547,9 +547,59 @@ class OpenRouterOrchestrator:
 
 4. **Context Maintenance**: Remember the current patient context across the conversation.
 
+5. **Be Proactive**: When patient data is loaded, immediately identify care gaps, incomplete data, and suggest actions.
+
 Current Time: {datetime.now().isoformat()}
 Model: {self.model}
 """
+
+        # Inject current patient context if available
+        if self.current_patient_context:
+            patient = self.current_patient_context.get("patient", {})
+            conditions = self.current_patient_context.get("conditions", [])
+            medications = self.current_patient_context.get("medications", [])
+            allergies = self.current_patient_context.get("allergies", [])
+            care_gaps = self.current_patient_context.get("careGaps", [])
+            incomplete = self.current_patient_context.get("incompleteData", [])
+
+            # Format conditions list
+            active_conditions = [c["code"] for c in conditions if c.get("isActive")]
+
+            # Format medications list
+            med_list = [m["medication"] for m in medications]
+
+            # Format allergies list
+            allergy_list = [a["substance"] for a in allergies]
+
+            # Format care gaps
+            gap_list = [g["description"] for g in care_gaps]
+
+            # Format incomplete data
+            incomplete_list = [i["message"] for i in incomplete]
+
+            patient_context = f"""
+
+## CURRENT PATIENT CONTEXT (Use this to be proactive)
+
+**Patient:** {patient.get('name', 'Unknown')} ({patient.get('age', '?')}yo {patient.get('gender', '')}), DOB: {patient.get('birthDate', 'Unknown')}
+**MRN:** {patient.get('mrn', 'N/A')}
+**Patient ID:** {patient.get('id', 'Unknown')}
+
+**Active Conditions:** {', '.join(active_conditions) if active_conditions else 'None documented'}
+**Current Medications:** {', '.join(med_list) if med_list else 'None active'}
+**Allergies:** {', '.join(allergy_list) if allergy_list else 'None documented (CONFIRM NKDA!)'}
+
+**Care Gaps Identified:**
+{chr(10).join('- ' + g for g in gap_list) if gap_list else '- None identified'}
+
+**Incomplete Data:**
+{chr(10).join('- ' + i for i in incomplete_list) if incomplete_list else '- Record appears complete'}
+
+IMPORTANT: Use this context to proactively suggest actions. If allergies are not documented, ask to confirm NKDA. If care gaps exist, suggest addressing them.
+"""
+            base_prompt += patient_context
+
+        return base_prompt
 
     async def execute_tool(self, tool_call: ToolCall) -> ToolResult:
         """Execute a tool call."""
@@ -651,11 +701,13 @@ Model: {self.model}
                         "result": result.result,
                     })
 
-                    # Update patient context
+                    # Update patient context and rebuild system prompt
                     if tc.name == "get_patient_summary" and result.success:
                         self.current_patient_context = result.result
                         if "patient" in result.result:
                             self.current_patient_id = result.result["patient"].get("id")
+                        # Rebuild system prompt with patient context
+                        self.system_prompt = self._build_system_prompt()
                     elif tc.name == "search_patient" and result.success:
                         if result.result.get("total") == 1:
                             self.current_patient_id = result.result["patients"][0]["id"]

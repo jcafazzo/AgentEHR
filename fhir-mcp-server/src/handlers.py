@@ -207,59 +207,310 @@ async def handle_get_patient(args: dict) -> dict:
 
 
 async def handle_get_patient_summary(args: dict) -> dict:
-    """Get comprehensive patient summary."""
+    """Get comprehensive patient summary with all clinical data."""
     patient_id = args["patient_id"]
+    from datetime import datetime, timedelta
 
+    # Fetch all data in parallel
     patient_task = fhir_client.read("Patient", patient_id)
-    conditions_task = fhir_client.search("Condition", {"patient": patient_id, "clinical-status": "active"})
+    conditions_task = fhir_client.search("Condition", {"patient": patient_id})
     medications_task = fhir_client.search("MedicationRequest", {"patient": patient_id, "status": "active"})
     allergies_task = fhir_client.search("AllergyIntolerance", {"patient": patient_id})
+    observations_task = fhir_client.search("Observation", {
+        "patient": patient_id,
+        "_sort": "-date",
+        "_count": "100"
+    })
+    procedures_task = fhir_client.search("Procedure", {
+        "patient": patient_id,
+        "_sort": "-date",
+        "_count": "20"
+    })
+    immunizations_task = fhir_client.search("Immunization", {"patient": patient_id})
+    encounters_task = fhir_client.search("Encounter", {
+        "patient": patient_id,
+        "_sort": "-date",
+        "_count": "10"
+    })
+    documents_task = fhir_client.search("DocumentReference", {
+        "patient": patient_id,
+        "_sort": "-date",
+        "_count": "10"
+    })
 
-    patient, conditions, medications, allergies = await asyncio.gather(
+    (patient, conditions, medications, allergies, observations,
+     procedures, immunizations, encounters, documents) = await asyncio.gather(
         patient_task, conditions_task, medications_task, allergies_task,
+        observations_task, procedures_task, immunizations_task,
+        encounters_task, documents_task,
         return_exceptions=True,
     )
+
+    # Calculate age
+    age = None
+    birth_date = patient.get("birthDate") if isinstance(patient, dict) else None
+    if birth_date:
+        try:
+            birth = datetime.strptime(birth_date, "%Y-%m-%d")
+            age = (datetime.now() - birth).days // 365
+        except ValueError:
+            pass
 
     summary = {
         "patient": {
             "id": patient.get("id") if isinstance(patient, dict) else patient_id,
             "name": format_name(patient.get("name", [])) if isinstance(patient, dict) else "Unknown",
-            "birthDate": patient.get("birthDate") if isinstance(patient, dict) else None,
+            "birthDate": birth_date,
+            "age": age,
             "gender": patient.get("gender") if isinstance(patient, dict) else None,
+            "mrn": _extract_mrn(patient) if isinstance(patient, dict) else None,
         },
-        "activeConditions": [],
-        "activeMedications": [],
+        "conditions": [],
+        "medications": [],
         "allergies": [],
+        "labs": [],
+        "vitals": [],
+        "immunizations": [],
+        "procedures": [],
+        "encounters": [],
+        "clinicalNotes": [],
+        "careGaps": [],
+        "incompleteData": [],
     }
 
+    # Process conditions
     if isinstance(conditions, dict):
         for entry in conditions.get("entry", []):
             resource = entry.get("resource", {})
+            status = extract_code_display(resource.get("clinicalStatus"))
             condition = {
+                "id": resource.get("id"),
                 "code": extract_code_display(resource.get("code")),
+                "status": status,
                 "onsetDate": resource.get("onsetDateTime"),
+                "isActive": status.lower() == "active",
             }
-            summary["activeConditions"].append(condition)
+            summary["conditions"].append(condition)
 
+    # Process medications
     if isinstance(medications, dict):
         for entry in medications.get("entry", []):
             resource = entry.get("resource", {})
             med = {
+                "id": resource.get("id"),
                 "medication": extract_medication_name(resource),
                 "dosage": extract_dosage(resource),
+                "status": resource.get("status"),
             }
-            summary["activeMedications"].append(med)
+            summary["medications"].append(med)
 
+    # Process allergies
     if isinstance(allergies, dict):
         for entry in allergies.get("entry", []):
             resource = entry.get("resource", {})
             allergy = {
+                "id": resource.get("id"),
                 "substance": extract_code_display(resource.get("code")),
                 "reaction": extract_reaction(resource),
+                "criticality": resource.get("criticality"),
+                "category": resource.get("category", [None])[0] if resource.get("category") else None,
             }
             summary["allergies"].append(allergy)
 
+    # Process observations - separate labs from vitals
+    if isinstance(observations, dict):
+        for entry in observations.get("entry", []):
+            resource = entry.get("resource", {})
+            categories = resource.get("category", [])
+
+            is_lab = False
+            is_vital = False
+            for cat in categories:
+                for coding in cat.get("coding", []):
+                    code = coding.get("code", "")
+                    if code == "laboratory":
+                        is_lab = True
+                    elif code == "vital-signs":
+                        is_vital = True
+
+            obs = {
+                "id": resource.get("id"),
+                "code": extract_code_display(resource.get("code")),
+                "value": extract_observation_value(resource),
+                "date": resource.get("effectiveDateTime", "")[:10] if resource.get("effectiveDateTime") else None,
+                "status": resource.get("status"),
+            }
+
+            if is_lab:
+                summary["labs"].append(obs)
+            elif is_vital:
+                summary["vitals"].append(obs)
+
+    # Process procedures
+    if isinstance(procedures, dict):
+        for entry in procedures.get("entry", []):
+            resource = entry.get("resource", {})
+            procedure = {
+                "id": resource.get("id"),
+                "name": extract_code_display(resource.get("code")),
+                "date": resource.get("performedDateTime", "")[:10] if resource.get("performedDateTime") else None,
+                "status": resource.get("status"),
+            }
+            summary["procedures"].append(procedure)
+
+    # Process immunizations
+    if isinstance(immunizations, dict):
+        for entry in immunizations.get("entry", []):
+            resource = entry.get("resource", {})
+            immunization = {
+                "id": resource.get("id"),
+                "vaccine": extract_code_display(resource.get("vaccineCode")),
+                "date": resource.get("occurrenceDateTime", "")[:10] if resource.get("occurrenceDateTime") else None,
+                "status": resource.get("status"),
+            }
+            summary["immunizations"].append(immunization)
+
+    # Process encounters
+    if isinstance(encounters, dict):
+        for entry in encounters.get("entry", []):
+            resource = entry.get("resource", {})
+            encounter = {
+                "id": resource.get("id"),
+                "type": extract_code_display(resource.get("type", [{}])[0] if resource.get("type") else {}),
+                "status": resource.get("status"),
+                "date": resource.get("period", {}).get("start", "")[:10] if resource.get("period") else None,
+            }
+            summary["encounters"].append(encounter)
+
+    # Process clinical notes
+    if isinstance(documents, dict):
+        for entry in documents.get("entry", []):
+            resource = entry.get("resource", {})
+            note = {
+                "id": resource.get("id"),
+                "type": extract_code_display(resource.get("type")),
+                "description": resource.get("description"),
+                "date": resource.get("date", "")[:10] if resource.get("date") else None,
+                "status": resource.get("status"),
+            }
+            summary["clinicalNotes"].append(note)
+
+    # Analyze care gaps
+    summary["careGaps"] = _analyze_care_gaps(summary, age)
+
+    # Identify incomplete data
+    summary["incompleteData"] = _identify_incomplete_data(summary)
+
     return summary
+
+
+def _extract_mrn(patient: dict) -> str | None:
+    """Extract MRN from patient identifiers."""
+    for identifier in patient.get("identifier", []):
+        if "MRN" in identifier.get("type", {}).get("text", "").upper():
+            return identifier.get("value")
+        if "MR" in (identifier.get("type", {}).get("coding", [{}])[0].get("code", "") or "").upper():
+            return identifier.get("value")
+    # Fall back to first identifier
+    if patient.get("identifier"):
+        return patient["identifier"][0].get("value")
+    return None
+
+
+def _analyze_care_gaps(summary: dict, age: int | None) -> list:
+    """Identify care gaps based on clinical data."""
+    gaps = []
+
+    # Check immunizations
+    vaccines_received = [i["vaccine"].lower() for i in summary.get("immunizations", []) if i.get("status") == "completed"]
+
+    # Flu vaccine
+    if not any("influenza" in v or "flu" in v for v in vaccines_received):
+        gaps.append({
+            "type": "immunization",
+            "description": "Flu vaccine may be due",
+            "priority": "routine",
+        })
+
+    # COVID-19
+    if not any("covid" in v or "sars-cov" in v for v in vaccines_received):
+        gaps.append({
+            "type": "immunization",
+            "description": "COVID-19 vaccine may be due",
+            "priority": "routine",
+        })
+
+    # Age-based recommendations
+    if age and age >= 50:
+        if not any("zoster" in v or "shingrix" in v for v in vaccines_received):
+            gaps.append({
+                "type": "immunization",
+                "description": "Shingles vaccine recommended for age 50+",
+                "priority": "routine",
+            })
+
+    if age and age >= 65:
+        if not any("pneum" in v for v in vaccines_received):
+            gaps.append({
+                "type": "immunization",
+                "description": "Pneumococcal vaccine recommended for age 65+",
+                "priority": "routine",
+            })
+
+    # Check for diabetic care gaps
+    conditions = [c["code"].lower() for c in summary.get("conditions", []) if c.get("isActive")]
+    if any("diabetes" in c or "dm" in c or "a1c" in c for c in conditions):
+        # Check for recent A1C
+        labs = summary.get("labs", [])
+        a1c_labs = [l for l in labs if "a1c" in l.get("code", "").lower() or "hemoglobin" in l.get("code", "").lower()]
+        if not a1c_labs:
+            gaps.append({
+                "type": "lab",
+                "description": "A1C may be due (diabetic monitoring)",
+                "priority": "routine",
+            })
+
+        # Check for eye exam (annually)
+        if not any("eye" in p.get("name", "").lower() or "ophth" in p.get("name", "").lower()
+                   for p in summary.get("procedures", [])):
+            gaps.append({
+                "type": "referral",
+                "description": "Diabetic eye exam may be due",
+                "priority": "routine",
+            })
+
+    return gaps
+
+
+def _identify_incomplete_data(summary: dict) -> list:
+    """Identify missing or incomplete data in the patient record."""
+    incomplete = []
+
+    # No allergies documented
+    if not summary.get("allergies"):
+        incomplete.append({
+            "field": "allergies",
+            "message": "No allergies documented - confirm NKDA or document allergies",
+            "priority": "high",
+        })
+
+    # No conditions
+    if not summary.get("conditions"):
+        incomplete.append({
+            "field": "conditions",
+            "message": "No conditions documented",
+            "priority": "medium",
+        })
+
+    # No recent vitals
+    if not summary.get("vitals"):
+        incomplete.append({
+            "field": "vitals",
+            "message": "No vital signs on record",
+            "priority": "low",
+        })
+
+    return incomplete
 
 
 async def handle_search_medications(args: dict) -> dict:
