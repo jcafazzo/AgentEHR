@@ -469,8 +469,8 @@ export default function ChatPage() {
                     className="w-full px-3 py-2 bg-white/10 rounded text-sm placeholder:text-emerald-300/50 focus:outline-none focus:ring-1 focus:ring-emerald-400 text-white"
                   />
                   {searchResults.length > 0 && (
-                    <div className="mt-2">
-                      {searchResults.slice(0, 5).map((patient) => (
+                    <div className="mt-2 max-h-72 overflow-y-auto pr-1">
+                      {searchResults.map((patient) => (
                         <button
                           key={patient.id}
                           onClick={() => handleSelectPatient(patient)}
@@ -526,16 +526,18 @@ export default function ChatPage() {
               {/* Search Results */}
               {searchResults.length > 0 && (
                 <div className="mb-4 border-b border-white/10 pb-4">
-                  <p className="text-xs text-slate-400 mb-2">Search Results</p>
-                  {searchResults.slice(0, 5).map((patient) => (
-                    <button
-                      key={patient.id}
-                      onClick={() => handleSelectPatient(patient)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded transition-colors text-slate-300 hover:text-white"
-                    >
-                      {patient.name}
-                    </button>
-                  ))}
+                  <p className="text-xs text-slate-400 mb-2">Search Results ({searchResults.length})</p>
+                  <div className="max-h-72 overflow-y-auto pr-1">
+                    {searchResults.map((patient) => (
+                      <button
+                        key={patient.id}
+                        onClick={() => handleSelectPatient(patient)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded transition-colors text-slate-300 hover:text-white"
+                      >
+                        {patient.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -599,7 +601,7 @@ export default function ChatPage() {
                 {isPatientMode ? 'Loading your health summary...' : 'Generating summary...'}
               </p>
             ) : narrative ? (
-              <p className="text-sm text-slate-500 mt-2 leading-relaxed line-clamp-3">{narrative}</p>
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed">{narrative}</p>
             ) : null}
           </div>
         )}

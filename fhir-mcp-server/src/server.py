@@ -1173,12 +1173,18 @@ async def handle_search_patient(args: dict) -> dict:
     params = {}
     if name := args.get("name"):
         params["name"] = name
+    if query := args.get("query"):  # Support 'query' parameter for API compatibility
+        normalized_query = query.strip()
+        if normalized_query and normalized_query != "*":
+            params["name"] = normalized_query
     if identifier := args.get("identifier"):
         params["identifier"] = identifier
     if birthdate := args.get("birthdate"):
         params["birthdate"] = birthdate
     if gender := args.get("gender"):
         params["gender"] = gender
+    params["_count"] = str(args.get("count", "200"))
+    params["_total"] = "accurate"
 
     bundle = await fhir_client.search("Patient", params)
 

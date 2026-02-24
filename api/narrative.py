@@ -111,7 +111,7 @@ async def generate_narrative(patient_summary: dict, mode: str = "clinician") -> 
         response = await client.create_message(
             messages=[{"role": "user", "content": formatted_data}],
             system=prompt,
-            max_tokens=512,
+            max_tokens=1024,
             temperature=0.3,
         )
 
