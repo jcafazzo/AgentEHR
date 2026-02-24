@@ -422,7 +422,7 @@ def _analyze_care_gaps(summary: dict, age: int | None) -> list:
     gaps = []
 
     # Check immunizations
-    vaccines_received = [i["vaccine"].lower() for i in summary.get("immunizations", []) if i.get("status") == "completed"]
+    vaccines_received = [(i.get("vaccine") or "").lower() for i in summary.get("immunizations", []) if i.get("status") == "completed"]
 
     # Flu vaccine
     if not any("influenza" in v or "flu" in v for v in vaccines_received):
@@ -458,7 +458,7 @@ def _analyze_care_gaps(summary: dict, age: int | None) -> list:
             })
 
     # Check for diabetic care gaps
-    conditions = [c["code"].lower() for c in summary.get("conditions", []) if c.get("isActive")]
+    conditions = [(c.get("code") or "").lower() for c in summary.get("conditions", []) if c.get("isActive")]
     if any("diabetes" in c or "dm" in c or "a1c" in c for c in conditions):
         # Check for recent A1C
         labs = summary.get("labs", [])
@@ -766,6 +766,82 @@ async def handle_search_encounters(args: dict) -> dict:
     }
 
 
+async def handle_search_clinical_notes(args: dict) -> dict:
+    """Search for clinical notes (DocumentReferences) for a patient."""
+    patient_id = args["patient_id"]
+
+    params = {
+        "patient": patient_id,
+        "_sort": "-date",
+        "_count": args.get("count", "20"),
+    }
+    if note_type := args.get("note_type"):
+        type_codes = {
+            "progress_note": "11506-3",
+            "history_physical": "34117-2",
+            "discharge_summary": "18842-5",
+            "consultation": "11488-4",
+            "procedure_note": "28570-0",
+        }
+        if code := type_codes.get(note_type):
+            params["type"] = f"http://loinc.org|{code}"
+
+    bundle = await fhir_client.search("DocumentReference", params)
+
+    notes = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        note = {
+            "id": resource.get("id"),
+            "type": extract_code_display(resource.get("type")),
+            "description": resource.get("description"),
+            "date": resource.get("date", "")[:10] if resource.get("date") else None,
+            "status": resource.get("status"),
+            "author": resource.get("author", [{}])[0].get("display") if resource.get("author") else None,
+        }
+        notes.append(note)
+
+    return {
+        "total": bundle.get("total", len(notes)),
+        "notes": notes,
+    }
+
+
+async def handle_get_clinical_note(args: dict) -> dict:
+    """Get a specific clinical note with its full content."""
+    import base64
+
+    note_id = args["note_id"]
+
+    try:
+        resource = await fhir_client.read("DocumentReference", note_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Clinical note {note_id} not found"}
+        raise
+
+    content_text = ""
+    for content_item in resource.get("content", []):
+        attachment = content_item.get("attachment", {})
+        if data := attachment.get("data"):
+            try:
+                content_text = base64.b64decode(data).decode("utf-8")
+            except Exception:
+                content_text = "(Unable to decode note content)"
+        elif url := attachment.get("url"):
+            content_text = f"(Content at: {url})"
+
+    return {
+        "id": resource.get("id"),
+        "type": extract_code_display(resource.get("type")),
+        "description": resource.get("description"),
+        "date": resource.get("date"),
+        "status": resource.get("status"),
+        "content": content_text,
+        "author": resource.get("author", [{}])[0].get("display") if resource.get("author") else None,
+    }
+
+
 async def handle_create_care_plan(args: dict) -> dict:
     """Create a care plan."""
     patient_id = args["patient_id"]
@@ -823,6 +899,12 @@ async def handle_create_care_plan(args: dict) -> dict:
 async def handle_create_appointment(args: dict) -> dict:
     """Create an appointment."""
     patient_id = args["patient_id"]
+    reason = args["reason"]
+
+    # Build description with notes if provided
+    description = reason
+    if notes := args.get("notes"):
+        description += f" — {notes}"
 
     appointment = {
         "resourceType": "Appointment",
@@ -833,24 +915,40 @@ async def handle_create_appointment(args: dict) -> dict:
                 "status": "needs-action",
             },
         ],
-        "description": args["reason"],
+        "description": description,
     }
 
-    if appt_type := args.get("appointment_type"):
-        appointment["appointmentType"] = {"text": appt_type}
+    # Appointment type with specialty qualifier
+    appt_type = args.get("appointment_type", "routine")
+    specialty = args.get("specialty")
+    type_text = appt_type
+    if specialty:
+        type_text = f"{appt_type} — {specialty}"
+    appointment["appointmentType"] = {"text": type_text}
 
     if duration := args.get("duration_minutes"):
         appointment["minutesDuration"] = duration
 
-    if preferred_date := args.get("preferred_date"):
+    # Support full datetime (preferred_datetime) or date-only (preferred_date) for backward compat
+    preferred_datetime = args.get("preferred_datetime")
+    preferred_date = args.get("preferred_date")
+    display_time = None
+
+    if preferred_datetime:
+        appointment["requestedPeriod"] = [{"start": preferred_datetime}]
+        display_time = preferred_datetime
+    elif preferred_date:
         appointment["requestedPeriod"] = [{"start": f"{preferred_date}T09:00:00Z"}]
+        display_time = preferred_date
 
     result = await fhir_client.create("Appointment", appointment)
     fhir_id = result.get("id")
 
-    summary = f"Appointment: {args['reason']}"
-    if preferred_date := args.get("preferred_date"):
-        summary += f" on {preferred_date}"
+    summary = f"Appointment: {reason}"
+    if specialty:
+        summary += f" ({specialty})"
+    if display_time:
+        summary += f" on {display_time}"
 
     queue = get_approval_queue()
     action = queue.queue_action(
@@ -864,14 +962,45 @@ async def handle_create_appointment(args: dict) -> dict:
 
     return {
         "status": "proposed",
-        "message": "Appointment request created. Requires scheduling confirmation.",
+        "message": "Appointment request created. Requires clinician approval to confirm booking.",
         "action_id": action.action_id,
         "appointment": {
             "id": fhir_id,
-            "reason": args["reason"],
-            "type": args.get("appointment_type"),
-            "preferredDate": args.get("preferred_date"),
+            "reason": reason,
+            "type": appt_type,
+            "specialty": specialty,
+            "preferredDatetime": display_time,
         },
+    }
+
+
+async def handle_search_appointments(args: dict) -> dict:
+    """Search for patient's appointments."""
+    patient_id = args["patient_id"]
+    params = {"patient": f"Patient/{patient_id}"}
+    if status := args.get("status"):
+        params["status"] = status
+
+    result = await fhir_client.search("Appointment", params)
+    entries = result.get("entry", [])
+
+    appointments = []
+    for entry in entries:
+        appt = entry.get("resource", {})
+        appointments.append({
+            "id": appt.get("id"),
+            "status": appt.get("status"),
+            "type": appt.get("appointmentType", {}).get("text"),
+            "description": appt.get("description"),
+            "duration": appt.get("minutesDuration"),
+            "requestedPeriod": appt.get("requestedPeriod"),
+            "start": appt.get("start"),
+            "end": appt.get("end"),
+        })
+
+    return {
+        "total": len(appointments),
+        "appointments": appointments,
     }
 
 
@@ -1148,6 +1277,27 @@ async def handle_approve_action(args: dict) -> dict:
             current["status"] = "active"
         elif resource_type == "Appointment":
             current["status"] = "booked"
+            # FHIR constraint app-3: booked appointments must have start/end
+            if not current.get("start"):
+                requested = current.get("requestedPeriod", [{}])
+                start_time = requested[0].get("start") if requested else None
+                if start_time:
+                    current["start"] = start_time
+                    # Default 30 min duration if no end time
+                    duration = current.get("minutesDuration", 30)
+                    from datetime import datetime, timedelta
+                    try:
+                        dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        end_dt = dt + timedelta(minutes=duration)
+                        current["end"] = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except (ValueError, TypeError):
+                        current["end"] = start_time
+                else:
+                    # No requested time — use now + 30 min as placeholder
+                    from datetime import datetime, timedelta, timezone
+                    now = datetime.now(timezone.utc)
+                    current["start"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    current["end"] = (now + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         elif resource_type == "ServiceRequest":
             current["status"] = "active"
         elif resource_type == "DocumentReference":
@@ -1167,6 +1317,7 @@ async def handle_approve_action(args: dict) -> dict:
             "action_id": action_id,
             "fhir_id": fhir_id,
             "resource_type": resource_type,
+            "patient_id": action.patient_id,
         }
 
     except Exception as e:

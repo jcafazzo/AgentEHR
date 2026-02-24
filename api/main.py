@@ -40,16 +40,24 @@ from handlers import (
     handle_approve_action,
     handle_reject_action,
 )
+from api.narrative import get_or_generate_narrative, invalidate_narrative  # noqa: E402
 
 # Store orchestrator instances per conversation
 orchestrators: dict[str, OpenRouterOrchestrator] = {}
 
 
-def get_or_create_orchestrator(conversation_id: str, model: str = "glm-5") -> OpenRouterOrchestrator:
+def get_or_create_orchestrator(conversation_id: str, model: str = "glm-5", mode: str = "clinician") -> OpenRouterOrchestrator:
     """Get or create an orchestrator for a conversation."""
     if conversation_id not in orchestrators:
-        orchestrators[conversation_id] = OpenRouterOrchestrator(model=model)
-        logger.info(f"Created new orchestrator for conversation {conversation_id}")
+        orchestrators[conversation_id] = OpenRouterOrchestrator(model=model, mode=mode)
+        logger.info(f"Created new orchestrator for conversation {conversation_id} (mode={mode})")
+    else:
+        # Update mode if it changed
+        orch = orchestrators[conversation_id]
+        if orch.mode != mode:
+            orch.mode = mode
+            orch.system_prompt = orch._build_system_prompt()
+            logger.info(f"Updated orchestrator mode to {mode} for conversation {conversation_id}")
     return orchestrators[conversation_id]
 
 
@@ -82,7 +90,7 @@ app = FastAPI(
 # Add CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3010", "http://127.0.0.1:3010"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,7 +104,9 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
-    model: str = "glm-5"
+    model: str = "gemini"
+    patient_id: Optional[str] = None
+    mode: str = "clinician"  # "clinician" or "patient"
 
 
 class ChatResponse(BaseModel):
@@ -150,7 +160,18 @@ async def chat(request: ChatRequest):
         conversation_id = request.conversation_id or str(uuid.uuid4())
 
         # Get or create orchestrator
-        orchestrator = get_or_create_orchestrator(conversation_id, request.model)
+        orchestrator = get_or_create_orchestrator(conversation_id, request.model, request.mode)
+
+        # Auto-load patient context if frontend provides patient_id
+        if request.patient_id and not orchestrator.current_patient_context:
+            try:
+                summary = await handle_get_patient_summary({"patient_id": request.patient_id})
+                orchestrator.current_patient_context = summary
+                orchestrator.current_patient_id = request.patient_id
+                orchestrator.system_prompt = orchestrator._build_system_prompt()
+                logger.info(f"Auto-loaded patient context for {request.patient_id}")
+            except Exception as ctx_err:
+                logger.warning(f"Failed to auto-load patient context for {request.patient_id}: {ctx_err}")
 
         # Process message
         response = await orchestrator.process_message(request.message)
@@ -201,6 +222,10 @@ async def approve_action(action_id: str):
 
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
+
+        # Invalidate narrative cache — record changed
+        if patient_id := result.get("patient_id"):
+            invalidate_narrative(patient_id)
 
         return ActionResponse(
             status=result.get("status", "approved"),
@@ -273,6 +298,18 @@ async def get_patient_summary(patient_id: str):
         return result
     except Exception as e:
         logger.exception(f"Patient summary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/patients/{patient_id}/narrative")
+async def get_patient_narrative(patient_id: str, mode: str = "clinician"):
+    """Get AI-generated narrative for a patient (clinical or patient-friendly)."""
+    try:
+        summary = await handle_get_patient_summary({"patient_id": patient_id})
+        result = await get_or_generate_narrative(patient_id, summary, mode=mode)
+        return result
+    except Exception as e:
+        logger.exception(f"Narrative generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

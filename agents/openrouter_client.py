@@ -65,7 +65,8 @@ class OpenRouterClient:
         "claude-sonnet": "anthropic/claude-3.5-sonnet",
         "claude-opus": "anthropic/claude-3-opus",
         "gpt-4o": "openai/gpt-4o",
-        "gemini": "google/gemini-2.0-flash-001:free",
+        "gemini": "google/gemini-2.5-flash-lite",
+        "gemini-3-flash": "google/gemini-3-flash-preview",
     }
 
     def __init__(

@@ -8,6 +8,7 @@ interface CollapsibleSectionProps {
   defaultOpen?: boolean;
   badge?: string;
   badgeColor?: 'red' | 'green' | 'amber' | 'slate';
+  id?: string;
 }
 
 const badgeColors = {
@@ -23,11 +24,12 @@ export function CollapsibleSection({
   defaultOpen = false,
   badge,
   badgeColor = 'slate',
+  id,
 }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-b border-slate-200 last:border-b-0">
+    <div id={id} className="border-b border-slate-200 last:border-b-0" data-collapsed={!isOpen}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between py-3 text-left hover:bg-slate-50 transition-colors"

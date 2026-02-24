@@ -1,3 +1,6 @@
+// Portal mode
+export type PortalMode = 'clinician' | 'patient'
+
 // Patient and clinical data types
 
 export interface Patient {
@@ -143,6 +146,12 @@ export interface ChatResponse {
   tool_results: any[];
   warnings: any[];
   pending_actions: any[];
+}
+
+export interface PatientNarrative {
+  narrative: string;
+  generated_at: number;
+  cached: boolean;
 }
 
 export interface PatientSearchResult {

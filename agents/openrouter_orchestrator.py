@@ -36,6 +36,14 @@ def load_clinical_reasoning_prompt() -> str:
     return ""
 
 
+def load_patient_portal_prompt() -> str:
+    """Load the patient portal system prompt."""
+    prompt_path = PROMPTS_DIR / "patient_portal.md"
+    if prompt_path.exists():
+        return prompt_path.read_text()
+    return ""
+
+
 # Tool definitions (same as main orchestrator)
 FHIR_TOOLS = [
     {
@@ -400,6 +408,176 @@ FHIR_TOOLS = [
             "required": ["patient_id"],
         },
     },
+
+    # Appointment Scheduling
+    {
+        "name": "create_appointment",
+        "description": "Schedule an appointment for the patient. Creates a draft appointment that requires clinician approval before being confirmed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "reason": {"type": "string", "description": "Reason for the appointment (e.g., 'Diabetic Eye Exam', 'Follow-up visit')"},
+                "appointment_type": {
+                    "type": "string",
+                    "enum": ["routine", "followup", "urgent", "checkup"],
+                    "description": "Type of appointment",
+                },
+                "preferred_datetime": {
+                    "type": "string",
+                    "description": "Preferred date and time in ISO 8601 format (e.g., '2026-08-28T15:00:00Z'). If only a date is known, use T09:00:00Z as default time.",
+                },
+                "duration_minutes": {"type": "integer", "description": "Appointment duration in minutes (default 30)"},
+                "specialty": {"type": "string", "description": "Medical specialty (e.g., 'Ophthalmology', 'Cardiology', 'Primary Care')"},
+                "notes": {"type": "string", "description": "Additional notes or instructions"},
+            },
+            "required": ["patient_id", "reason"],
+        },
+    },
+    {
+        "name": "search_appointments",
+        "description": "Search for existing appointments for a patient. Use to check for conflicts or review upcoming schedule.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "status": {"type": "string", "enum": ["proposed", "booked", "cancelled"], "description": "Filter by appointment status"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+
+    # Encounters & Clinical Notes
+    {
+        "name": "search_encounters",
+        "description": "Search for patient encounters (visits, admissions). Returns encounter history with dates, types, and status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "status": {"type": "string", "enum": ["planned", "arrived", "in-progress", "finished", "cancelled"]},
+                "date_from": {"type": "string", "description": "Start date filter (YYYY-MM-DD)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "create_encounter_note",
+        "description": "Create a clinical note (progress note, H&P, discharge summary, consultation, procedure note). Creates as draft requiring approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "note_type": {"type": "string", "enum": ["progress_note", "history_physical", "discharge_summary", "consultation", "procedure_note"]},
+                "title": {"type": "string", "description": "Note title"},
+                "content": {"type": "string", "description": "Full text content of the note"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "author": {"type": "string", "description": "Author name (optional)"},
+            },
+            "required": ["patient_id", "note_type", "title", "content"],
+        },
+    },
+
+    # Search (conditions and observations)
+    {
+        "name": "search_conditions",
+        "description": "Search for patient conditions. Returns diagnoses with clinical status, onset date.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "clinical_status": {"type": "string", "enum": ["active", "recurrence", "relapse", "inactive", "remission", "resolved"]},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "search_observations",
+        "description": "Search for patient observations (labs, vitals). Filter by category or code.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "category": {"type": "string", "description": "Category (vital-signs, laboratory, etc.)"},
+                "code": {"type": "string", "description": "LOINC code filter"},
+                "date_from": {"type": "string", "description": "Start date filter (YYYY-MM-DD)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+
+    # Care Plans, Diagnostic Orders, Communications
+    {
+        "name": "create_care_plan",
+        "description": "Create a care plan with goals and activities. Creates as draft requiring approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "title": {"type": "string", "description": "Care plan title"},
+                "description": {"type": "string", "description": "Care plan description"},
+                "goals": {"type": "array", "items": {"type": "string"}, "description": "List of care goals"},
+                "activities": {"type": "array", "items": {"type": "string"}, "description": "List of planned activities"},
+            },
+            "required": ["patient_id", "title"],
+        },
+    },
+    {
+        "name": "create_diagnostic_order",
+        "description": "Order a lab test or imaging study. Creates as draft requiring approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "order_type": {"type": "string", "enum": ["lab", "imaging"], "description": "Type of diagnostic order"},
+                "test_name": {"type": "string", "description": "Name of the test (e.g., 'CBC', 'Chest X-Ray')"},
+                "reason": {"type": "string", "description": "Clinical reason for the order"},
+                "priority": {"type": "string", "enum": ["routine", "urgent", "stat"]},
+                "notes": {"type": "string", "description": "Additional notes"},
+            },
+            "required": ["patient_id", "order_type", "test_name", "reason"],
+        },
+    },
+    {
+        "name": "create_communication",
+        "description": "Create a communication (letter to referring physician, follow-up note, etc.). Creates as draft requiring approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "recipient_type": {"type": "string", "enum": ["referring_physician", "specialist", "patient", "insurance", "pharmacy"]},
+                "subject": {"type": "string", "description": "Subject of the communication"},
+                "content": {"type": "string", "description": "Full text content"},
+                "recipient_name": {"type": "string", "description": "Recipient name (optional)"},
+                "category": {"type": "string", "enum": ["referral_response", "consultation_note", "lab_results", "follow_up", "general"]},
+            },
+            "required": ["patient_id", "recipient_type", "subject", "content"],
+        },
+    },
+    {
+        "name": "search_clinical_notes",
+        "description": "Search for clinical notes (progress notes, H&P, discharge summaries, etc.) for a patient. Returns note metadata — use get_clinical_note to read full content.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "note_type": {"type": "string", "enum": ["progress_note", "history_physical", "discharge_summary", "consultation", "procedure_note"]},
+                "count": {"type": "string", "description": "Max results (default 20)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "get_clinical_note",
+        "description": "Get the full content of a specific clinical note by ID. Returns the decoded text content.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "note_id": {"type": "string", "description": "DocumentReference ID from search_clinical_notes"},
+            },
+            "required": ["note_id"],
+        },
+    },
 ]
 
 
@@ -427,13 +605,26 @@ class OpenRouterOrchestrator:
     Orchestrator using OpenRouter for LLM access.
 
     Supports multiple models including GLM-5, Claude, GPT-4.
+    Supports clinician and patient portal modes.
     """
+
+    # Tools available in patient portal mode (read-only + self-service)
+    PATIENT_ALLOWED_TOOLS = {
+        "get_patient", "get_patient_summary",
+        "search_medications", "search_conditions", "search_observations",
+        "search_procedures", "search_encounters", "search_appointments",
+        "get_immunization_status", "get_lab_results_with_trends",
+        "check_renal_function", "search_clinical_notes", "get_clinical_note",
+        # Patient self-service
+        "create_appointment",
+    }
 
     def __init__(
         self,
         model: str = "glm-5",
         api_key: str | None = None,
         max_turns: int = 10,
+        mode: str = "clinician",
     ):
         """
         Initialize the orchestrator.
@@ -442,9 +633,11 @@ class OpenRouterOrchestrator:
             model: Model to use (e.g., 'glm-5', 'claude-sonnet', 'gpt-4o')
             api_key: OpenRouter API key
             max_turns: Maximum tool-use turns
+            mode: Portal mode ('clinician' or 'patient')
         """
         self.model = model
         self.max_turns = max_turns
+        self.mode = mode
 
         self.client = OpenRouterClient(
             api_key=api_key,
@@ -493,6 +686,19 @@ class OpenRouterOrchestrator:
                 handle_create_referral,
                 handle_search_referrals,
                 handle_get_immunization_status,
+                handle_create_appointment,
+                handle_search_appointments,
+                # Encounters, Notes, Conditions, Observations, Care Plans, Orders, Communications
+                handle_search_encounters,
+                handle_create_encounter_note,
+                handle_search_conditions,
+                handle_search_observations,
+                handle_create_care_plan,
+                handle_create_diagnostic_order,
+                handle_create_communication,
+                # Clinical notes (DocumentReference)
+                handle_search_clinical_notes,
+                handle_get_clinical_note,
             )
 
             self.handlers = {
@@ -522,6 +728,19 @@ class OpenRouterOrchestrator:
                 "create_referral": handle_create_referral,
                 "search_referrals": handle_search_referrals,
                 "get_immunization_status": handle_get_immunization_status,
+                "create_appointment": handle_create_appointment,
+                "search_appointments": handle_search_appointments,
+                # Encounters, Notes, Conditions, Observations, Care Plans, Orders, Communications
+                "search_encounters": handle_search_encounters,
+                "create_encounter_note": handle_create_encounter_note,
+                "search_conditions": handle_search_conditions,
+                "search_observations": handle_search_observations,
+                "create_care_plan": handle_create_care_plan,
+                "create_diagnostic_order": handle_create_diagnostic_order,
+                "create_communication": handle_create_communication,
+                # Clinical notes (DocumentReference)
+                "search_clinical_notes": handle_search_clinical_notes,
+                "get_clinical_note": handle_get_clinical_note,
             }
             logger.info("Tool handlers imported successfully")
 
@@ -529,8 +748,20 @@ class OpenRouterOrchestrator:
             logger.error(f"Failed to import handlers: {e}")
             self.handlers = {}
 
+    def _get_tools(self) -> list:
+        """Get tools available for the current mode."""
+        if self.mode == "patient":
+            return [t for t in FHIR_TOOLS if t["name"] in self.PATIENT_ALLOWED_TOOLS]
+        return FHIR_TOOLS
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt with dynamic patient context."""
+        if self.mode == "patient":
+            return self._build_patient_prompt()
+        return self._build_clinician_prompt()
+
+    def _build_clinician_prompt(self) -> str:
+        """Build clinician-mode system prompt."""
         clinical_prompt = load_clinical_reasoning_prompt()
 
         base_prompt = f"""You are a clinical AI assistant for AgentEHR, helping clinicians interact with their Electronic Health Record system.
@@ -553,31 +784,47 @@ Current Time: {datetime.now().isoformat()}
 Model: {self.model}
 """
 
-        # Inject current patient context if available
+        if self.current_patient_context:
+            base_prompt += self._format_clinician_patient_context()
+
+        return base_prompt
+
+    def _build_patient_prompt(self) -> str:
+        """Build patient portal mode system prompt."""
+        patient_prompt = load_patient_portal_prompt()
+        patient_name = "there"
         if self.current_patient_context:
             patient = self.current_patient_context.get("patient", {})
-            conditions = self.current_patient_context.get("conditions", [])
-            medications = self.current_patient_context.get("medications", [])
-            allergies = self.current_patient_context.get("allergies", [])
-            care_gaps = self.current_patient_context.get("careGaps", [])
-            incomplete = self.current_patient_context.get("incompleteData", [])
+            patient_name = patient.get("name", "there").split(",")[0].split(" ")[0] if patient.get("name") else "there"
 
-            # Format conditions list
-            active_conditions = [c["code"] for c in conditions if c.get("isActive")]
+        base_prompt = f"""You are a friendly health assistant for {patient_name}'s personal health portal — AgentEHR Patient Portal.
 
-            # Format medications list
-            med_list = [m["medication"] for m in medications]
+{patient_prompt}
 
-            # Format allergies list
-            allergy_list = [a["substance"] for a in allergies]
+Current Time: {datetime.now().isoformat()}
+"""
 
-            # Format care gaps
-            gap_list = [g["description"] for g in care_gaps]
+        if self.current_patient_context:
+            base_prompt += self._format_patient_portal_context()
 
-            # Format incomplete data
-            incomplete_list = [i["message"] for i in incomplete]
+        return base_prompt
 
-            patient_context = f"""
+    def _format_clinician_patient_context(self) -> str:
+        """Format patient context for clinician mode."""
+        patient = self.current_patient_context.get("patient", {})
+        conditions = self.current_patient_context.get("conditions", [])
+        medications = self.current_patient_context.get("medications", [])
+        allergies = self.current_patient_context.get("allergies", [])
+        care_gaps = self.current_patient_context.get("careGaps", [])
+        incomplete = self.current_patient_context.get("incompleteData", [])
+
+        active_conditions = [c["code"] for c in conditions if c.get("isActive")]
+        med_list = [m["medication"] for m in medications]
+        allergy_list = [a["substance"] for a in allergies]
+        gap_list = [g["description"] for g in care_gaps]
+        incomplete_list = [i["message"] for i in incomplete]
+
+        return f"""
 
 ## CURRENT PATIENT CONTEXT (Use this to be proactive)
 
@@ -595,11 +842,46 @@ Model: {self.model}
 **Incomplete Data:**
 {chr(10).join('- ' + i for i in incomplete_list) if incomplete_list else '- Record appears complete'}
 
-IMPORTANT: Use this context to proactively suggest actions. If allergies are not documented, ask to confirm NKDA. If care gaps exist, suggest addressing them.
-"""
-            base_prompt += patient_context
+CRITICAL: You are already working with this patient. Their Patient ID is "{patient.get('id', '')}".
+- ALWAYS use this patient_id automatically for ALL tool calls. NEVER ask the user for a patient ID.
+- The clinician selected this patient in the UI — you already know who they are.
+- If a tool requires patient_id, use "{patient.get('id', '')}" without asking.
 
-        return base_prompt
+IMPORTANT: Use this context to proactively suggest actions. If allergies are not documented, ask to confirm NKDA. If care gaps exist, suggest addressing them.
+
+IMPORTANT: The patient's full clinical summary is ALREADY LOADED above. Do NOT call get_patient_summary — all the data you need is in the CURRENT PATIENT CONTEXT section. Use other tools (search_medications, search_conditions, etc.) only for targeted queries if needed.
+"""
+
+    def _format_patient_portal_context(self) -> str:
+        """Format patient context for patient portal mode."""
+        patient = self.current_patient_context.get("patient", {})
+        conditions = self.current_patient_context.get("conditions", [])
+        medications = self.current_patient_context.get("medications", [])
+        allergies = self.current_patient_context.get("allergies", [])
+
+        active_conditions = [c["code"] for c in conditions if c.get("isActive")]
+        med_list = [f"{m['medication']}" + (f" ({m.get('dosage', '')})" if m.get('dosage') else "") for m in medications]
+        allergy_list = [a["substance"] for a in allergies]
+
+        return f"""
+
+## YOUR HEALTH RECORD
+
+**Name:** {patient.get('name', 'Unknown')}
+**Age:** {patient.get('age', '?')} years old
+**Date of Birth:** {patient.get('birthDate', 'Unknown')}
+**Patient ID:** {patient.get('id', 'Unknown')}
+
+**Your Health Conditions:** {', '.join(active_conditions) if active_conditions else 'None on file'}
+**Your Medications:** {', '.join(med_list) if med_list else 'None active'}
+**Your Allergies:** {', '.join(allergy_list) if allergy_list else 'None on file'}
+
+CRITICAL: This is YOUR health record. Your Patient ID is "{patient.get('id', '')}".
+- ALWAYS use this patient_id automatically for ALL tool calls. NEVER ask for a patient ID.
+- You already know who the patient is — it's the person using the portal.
+
+IMPORTANT: The patient's health data is ALREADY LOADED above. Do NOT call get_patient_summary — all the data you need is here.
+"""
 
     async def execute_tool(self, tool_call: ToolCall) -> ToolResult:
         """Execute a tool call."""
@@ -663,7 +945,7 @@ IMPORTANT: Use this context to proactively suggest actions. If allergies are not
             response = await self.client.create_message(
                 messages=self.conversation_history,
                 system=self.system_prompt,
-                tools=FHIR_TOOLS,
+                tools=self._get_tools(),
             )
 
             # Check if tools need to be called
