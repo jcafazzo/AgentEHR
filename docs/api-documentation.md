@@ -1,10 +1,10 @@
 # AgentEHR API Documentation
 
-> **Version:** 0.1.0
+> **Version:** 0.2.0
 > **Base URL:** `http://localhost:8000`
-> **Last Updated:** 2026-02-21
+> **Last Updated:** 2026-02-24
 
-AgentEHR is a conversational clinical AI assistant built on FHIR R4. It provides an HTTP API for the frontend and an MCP (Model Context Protocol) server with 33 tools for direct FHIR operations.
+AgentEHR is a conversational clinical AI assistant built on FHIR R4. It provides an HTTP API for the frontend and 47 FHIR tools for clinical operations. Supports dual portal modes: clinician (clinical decision support) and patient (health literacy and self-service).
 
 ---
 
@@ -16,24 +16,27 @@ AgentEHR is a conversational clinical AI assistant built on FHIR R4. It provides
    - [Health Check](#health-check)
    - [Chat](#chat)
    - [Patient Search & Summary](#patient-search--summary)
+   - [Patient Narrative](#patient-narrative)
    - [Action Queue](#action-queue)
-4. [MCP Tools Reference](#mcp-tools-reference)
+4. [Portal Modes](#portal-modes)
+5. [MCP Tools Reference](#mcp-tools-reference)
    - [Patient Tools](#patient-tools)
    - [Medication Management](#medication-management)
    - [Observation & Lab Tools](#observation--lab-tools)
    - [Condition / Problem List](#condition--problem-list)
    - [Encounter & Appointment](#encounter--appointment)
+   - [Clinical Notes](#clinical-notes)
    - [Orders & Referrals](#orders--referrals)
    - [Allergy Management](#allergy-management)
    - [Procedure & Documentation](#procedure--documentation)
    - [Communication](#communication)
    - [Immunization](#immunization)
    - [Approval Queue](#approval-queue)
-5. [Data Models](#data-models)
-6. [Approval Workflow](#approval-workflow)
-7. [Drug Interaction Validation](#drug-interaction-validation)
-8. [Error Handling](#error-handling)
-9. [Architecture](#architecture)
+6. [Data Models](#data-models)
+7. [Approval Workflow](#approval-workflow)
+8. [Drug Interaction Validation](#drug-interaction-validation)
+9. [Error Handling](#error-handling)
+10. [Architecture](#architecture)
 
 ---
 
@@ -45,7 +48,7 @@ AgentEHR is a conversational clinical AI assistant built on FHIR R4. It provides
 |---------|-------------|---------|
 | Medplum FHIR Server | `http://localhost:8103` | FHIR R4 backend |
 | AgentEHR API | `http://localhost:8000` | FastAPI HTTP layer |
-| Frontend | `http://localhost:3000` | Next.js UI |
+| Frontend | `http://localhost:3010` | Next.js UI |
 
 ### Quick Start
 
@@ -81,7 +84,7 @@ curl -X POST http://localhost:8000/api/chat \
 
 ### API Server
 
-The HTTP API does not require authentication for local development. CORS is configured for `http://localhost:3000`.
+The HTTP API does not require authentication for local development. CORS is configured for `http://localhost:3000` and `http://localhost:3010`.
 
 ### FHIR Server (Medplum)
 
@@ -138,7 +141,9 @@ Send a message to the clinical AI assistant. Creates or continues a conversation
 |-------|------|----------|---------|-------------|
 | `message` | string | Yes | - | The user's message |
 | `conversation_id` | string | No | Auto-generated UUID | ID to continue an existing conversation |
-| `model` | string | No | `"glm-5"` | LLM model alias (`glm-5`, `claude-sonnet`, `gpt-4o`) |
+| `model` | string | No | `"gemini"` | LLM model alias (`gemini`, `glm-5`, `claude-sonnet`, `gpt-4o`) |
+| `patient_id` | string | No | - | FHIR Patient ID (auto-loads patient context into system prompt) |
+| `mode` | string | No | `"clinician"` | Portal mode: `"clinician"` or `"patient"` |
 
 **Example Request:**
 
@@ -148,7 +153,9 @@ curl -X POST http://localhost:8000/api/chat \
   -d '{
     "message": "Order metformin 500mg twice daily for patient John Smith",
     "conversation_id": "conv-abc-123",
-    "model": "glm-5"
+    "patient_id": "pat-123",
+    "model": "gemini",
+    "mode": "clinician"
   }'
 ```
 
@@ -418,6 +425,50 @@ curl http://localhost:8000/api/patients/pat-123/summary
 
 ---
 
+### Patient Narrative
+
+#### `GET /api/patients/{patient_id}/narrative`
+
+Get an AI-generated clinical narrative summary for a patient. Supports clinician (third-person clinical style) and patient (second-person plain language) modes. Results are cached with hash-based invalidation — the narrative regenerates when underlying patient data changes.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `mode` | string | No | `"clinician"` | `"clinician"` for clinical style, `"patient"` for plain language |
+
+**Example:**
+
+```bash
+# Clinician narrative
+curl "http://localhost:8000/api/patients/pat-123/narrative"
+
+# Patient-friendly narrative
+curl "http://localhost:8000/api/patients/pat-123/narrative?mode=patient"
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "narrative": "John Smith is a 56-year-old male with Type 2 Diabetes Mellitus (A1C 8.2%), essential hypertension, and hyperlipidemia. He is currently managed on metformin 500mg BID, lisinopril 10mg daily, and simvastatin 20mg daily...",
+  "generated_at": 1708531200.5,
+  "cached": false
+}
+```
+
+**Patient mode response example:**
+
+```json
+{
+  "narrative": "You have a few health conditions that your care team is helping you manage. Your main condition is Type 2 diabetes, which means your body has trouble controlling blood sugar levels. Your most recent A1C test (which measures your average blood sugar over 3 months) was 8.2% — your doctor's goal is usually under 7%...",
+  "generated_at": 1708531250.3,
+  "cached": false
+}
+```
+
+---
+
 ### Action Queue
 
 #### `GET /api/actions`
@@ -527,9 +578,38 @@ curl -X POST http://localhost:8000/api/actions/act-789/reject \
 
 ---
 
+## Portal Modes
+
+AgentEHR supports two portal modes that affect AI behavior, available tools, and UI rendering.
+
+### Clinician Mode (default)
+
+- **System prompt:** Proactive clinical decision support (`agents/prompts/clinical_reasoning.md`)
+- **Available tools:** All 47 FHIR tools (read + write + approve)
+- **AI behavior:** Proactively identifies care gaps, suggests orders, flags drug interactions, uses clinical language
+- **Narrative style:** Third-person clinical ("62-year-old male presenting with...")
+
+### Patient Mode
+
+- **System prompt:** Health literacy and self-service (`agents/prompts/patient_portal.md`)
+- **Available tools:** 14 read-only tools + `create_appointment` for self-service scheduling
+- **AI behavior:** Explains in plain language, never provides medical advice, recommends discussing with doctor
+- **Narrative style:** Second-person plain language ("You have Type 2 diabetes, which means...")
+
+**Patient-allowed tools:**
+
+```
+get_patient, get_patient_summary, search_medications, search_conditions,
+search_observations, search_procedures, search_encounters, search_appointments,
+get_immunization_status, get_lab_results_with_trends, check_renal_function,
+search_clinical_notes, get_clinical_note, create_appointment
+```
+
+---
+
 ## MCP Tools Reference
 
-The MCP server exposes 33 tools for FHIR operations, accessible via the Model Context Protocol (stdio transport). All write operations create resources as **drafts** that must be approved through the approval queue.
+The system exposes 47 tools for FHIR operations. All write operations create resources as **drafts** that must be approved through the approval queue. In patient mode, only read tools and `create_appointment` are available.
 
 ### Patient Tools
 
@@ -736,6 +816,27 @@ Document a phone call with a patient (draft).
 | `note_type` | string | Yes | Call type |
 | `content` | string | Yes | Call summary |
 | `interaction_type` | string | No | `refill_request`, `test_results`, `symptom_followup`, etc. |
+
+---
+
+### Clinical Notes
+
+#### `search_clinical_notes`
+
+Search clinical notes (DocumentReference resources) for a patient. Returns metadata only.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `patient_id` | string | Yes | FHIR Patient ID |
+| `note_type` | string | No | Filter by type: `progress_note`, `history_physical`, `discharge_summary`, `consult_note`, `procedure_note` |
+
+#### `get_clinical_note`
+
+Get the full content of a specific clinical note, including decoded base64 text.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `note_id` | string | Yes | FHIR DocumentReference ID |
 
 ---
 
@@ -1091,7 +1192,7 @@ Tool errors are returned as JSON within the tool result:
 ```
 ┌─────────────────┐    HTTP     ┌──────────────────┐
 │   Next.js UI    │ ──────────► │   FastAPI Server  │
-│  localhost:3000  │            │  localhost:8000   │
+│  localhost:3010  │            │  localhost:8000   │
 └─────────────────┘            └────────┬─────────┘
                                         │
                                ┌────────▼─────────┐
@@ -1101,8 +1202,8 @@ Tool errors are returned as JSON within the tool result:
                                └────────┬─────────┘
                                         │ Tool calls
                                ┌────────▼─────────┐
-                               │   MCP Server      │
-                               │   (33 FHIR tools) │
+                               │   FHIR Handlers   │
+                               │   (47 tools)      │
                                └────────┬─────────┘
                                         │
                     ┌───────────────────┼───────────────────┐
@@ -1140,10 +1241,11 @@ Tool errors are returned as JSON within the tool result:
 
 | Alias | OpenRouter Model ID | Notes |
 |-------|---------------------|-------|
-| `glm-5` | `z-ai/glm-5` | Default model |
+| `gemini` | `google/gemini-2.5-flash-lite` | Default, fast |
+| `gemini-3-flash` | `google/gemini-3-flash-preview` | Used for narrative generation |
+| `glm-5` | `z-ai/glm-5` | Strong tool use |
 | `glm-4` | `z-ai/glm-4.5` | Current generation |
 | `glm-flash` | `z-ai/glm-4.7-flash` | Fast/cheap option |
 | `claude-sonnet` | `anthropic/claude-3.5-sonnet` | Anthropic |
 | `claude-opus` | `anthropic/claude-3-opus` | Anthropic (most capable) |
 | `gpt-4o` | `openai/gpt-4o` | OpenAI |
-| `gemini` | `google/gemini-2.0-flash-001:free` | Free tier |
