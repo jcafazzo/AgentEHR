@@ -4,13 +4,13 @@
 
 ## Current Phase: 1 — FHIR Inpatient Resource Expansion
 
-## Current Plan: 3 of 4
+## Current Plan: 4 of 4
 
 ## Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (2/4 plans complete) |
+| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (3/4 plans complete) |
 | 2 | Inpatient Seed Data | Planned |
 | 3 | Supervisor Agent | Planned |
 | 4 | Command Center Dashboard | Planned |
@@ -36,6 +36,10 @@
 - Create handlers (clinical impression, risk assessment, task) route through approval queue; read-modify-write task mutations bypass it
 - Task search uses patient= param with comma-separated status filter for pending task queries
 - RiskAssessment uses http://terminology.hl7.org/CodeSystem/risk-probability for qualitative risk coding
+- Create handlers (care team, goal, adverse event, communication) route through approval queue; DeviceMetric creates directly then queues
+- DeviceMetric uses placeholder patient_id 'device-registry' for approval queue (not patient-scoped)
+- Goal completion auto-sets achievementStatus to 'achieved' unless explicitly overridden
+- Communication search supports date range via FHIR ge/le prefix params
 
 ## Performance Metrics
 
@@ -43,13 +47,14 @@
 |-------|------|----------|-------|-------|
 | 01 | 01 | 6min | 2 | 4 |
 | 01 | 02 | 5min | 2 | 3 |
+| 01 | 03 | 9min | 2 | 3 |
 
 ## Blockers
 None.
 
 ## Last Session
-- **Stopped at:** Completed 01-02-PLAN.md
-- **Updated:** 2026-02-25T20:59:00Z
+- **Stopped at:** Completed 01-03-PLAN.md
+- **Updated:** 2026-02-25T21:13:35Z
 
 ---
-*Updated: 2026-02-25T20:59:00Z*
+*Updated: 2026-02-25T21:13:35Z*
