@@ -697,6 +697,141 @@ FHIR_TOOLS = [
             "required": ["flag_id"],
         },
     },
+
+    # =============================================================================
+    # Phase 1: Clinical Assessment (ClinicalImpression + RiskAssessment)
+    # =============================================================================
+    {
+        "name": "create_clinical_impression",
+        "description": "Create a clinical impression (assessment) for a patient. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "summary": {"type": "string", "description": "Clinical impression summary text"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "assessor": {"type": "string", "description": "Assessor display name (e.g., 'Infectious Disease Agent')"},
+                "finding_code": {"type": "string", "description": "SNOMED finding code"},
+                "finding_display": {"type": "string", "description": "SNOMED finding display text"},
+                "notes": {"type": "array", "items": {"type": "string"}, "description": "List of note strings"},
+                "status": {"type": "string", "enum": ["in-progress", "completed", "entered-in-error"], "description": "Impression status (default: completed)"},
+            },
+            "required": ["patient_id", "summary"],
+        },
+    },
+    {
+        "name": "get_clinical_impressions",
+        "description": "Get clinical impressions for a patient, optionally filtered by encounter and status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+                "status": {"type": "string", "description": "Filter by status (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "create_risk_assessment",
+        "description": "Create a risk assessment for a patient condition. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "condition_display": {"type": "string", "description": "Condition being assessed (e.g., 'Septic shock')"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "outcome_text": {"type": "string", "description": "Prediction outcome text"},
+                "risk_level": {"type": "string", "enum": ["negligible", "low", "moderate", "high", "certain"], "description": "Qualitative risk level"},
+                "basis": {"type": "array", "items": {"type": "string"}, "description": "Basis for assessment (e.g., ['NEWS2 score: 9'])"},
+                "notes": {"type": "array", "items": {"type": "string"}, "description": "List of note strings"},
+                "status": {"type": "string", "enum": ["registered", "preliminary", "final", "amended"], "description": "Assessment status (default: final)"},
+            },
+            "required": ["patient_id", "condition_display"],
+        },
+    },
+    {
+        "name": "get_risk_assessments",
+        "description": "Get risk assessments for a patient, optionally filtered by encounter.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+
+    # Phase 1: Task Management
+    {
+        "name": "create_task",
+        "description": "Create a care coordination task for a patient. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "description": {"type": "string", "description": "Task description text"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "priority": {"type": "string", "enum": ["routine", "urgent", "asap", "stat"], "description": "Task priority (default: routine)"},
+                "requester": {"type": "string", "description": "Requester display name (default: Supervisor Agent)"},
+                "owner": {"type": "string", "description": "Assignee display name (optional)"},
+                "due_date": {"type": "string", "description": "Due date in ISO datetime format"},
+                "notes": {"type": "array", "items": {"type": "string"}, "description": "List of note strings"},
+                "intent": {"type": "string", "description": "Task intent (default: order)"},
+            },
+            "required": ["patient_id", "description"],
+        },
+    },
+    {
+        "name": "assign_task",
+        "description": "Assign a task to an owner. Accepts the task if currently in requested status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "FHIR Task ID"},
+                "owner": {"type": "string", "description": "Assignee display name"},
+            },
+            "required": ["task_id", "owner"],
+        },
+    },
+    {
+        "name": "complete_task",
+        "description": "Mark a task as completed, optionally with completion notes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "FHIR Task ID"},
+                "output_text": {"type": "string", "description": "Completion notes (optional)"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "get_pending_tasks",
+        "description": "Get pending (non-completed) tasks for a patient.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+                "status": {"type": "string", "description": "Comma-separated status filter (default: requested,accepted,in-progress)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "update_task_status",
+        "description": "Update the status of a task. Sets executionPeriod timestamps on status transitions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "FHIR Task ID"},
+                "status": {"type": "string", "enum": ["draft", "requested", "received", "accepted", "rejected", "ready", "cancelled", "in-progress", "on-hold", "failed", "completed", "entered-in-error"], "description": "New task status"},
+            },
+            "required": ["task_id", "status"],
+        },
+    },
 ]
 
 
@@ -827,6 +962,16 @@ class OpenRouterOrchestrator:
                 handle_create_flag,
                 handle_get_active_flags,
                 handle_resolve_flag,
+                # Phase 1: Clinical Assessment + Task Management
+                handle_create_clinical_impression,
+                handle_get_clinical_impressions,
+                handle_create_risk_assessment,
+                handle_get_risk_assessments,
+                handle_create_task,
+                handle_assign_task,
+                handle_complete_task,
+                handle_get_pending_tasks,
+                handle_update_task_status,
             )
 
             self.handlers = {
@@ -878,6 +1023,16 @@ class OpenRouterOrchestrator:
                 "create_flag": handle_create_flag,
                 "get_active_flags": handle_get_active_flags,
                 "resolve_flag": handle_resolve_flag,
+                # Phase 1: Clinical Assessment + Task Management
+                "create_clinical_impression": handle_create_clinical_impression,
+                "get_clinical_impressions": handle_get_clinical_impressions,
+                "create_risk_assessment": handle_create_risk_assessment,
+                "get_risk_assessments": handle_get_risk_assessments,
+                "create_task": handle_create_task,
+                "assign_task": handle_assign_task,
+                "complete_task": handle_complete_task,
+                "get_pending_tasks": handle_get_pending_tasks,
+                "update_task_status": handle_update_task_status,
             }
             logger.info("Tool handlers imported successfully")
 

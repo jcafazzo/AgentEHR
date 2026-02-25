@@ -1266,6 +1266,263 @@ async def list_tools() -> list[Tool]:
                 "required": ["flag_id"],
             },
         ),
+        # Phase 1: Clinical Assessment (ClinicalImpression + RiskAssessment)
+        Tool(
+            name="create_clinical_impression",
+            description="Create a clinical impression (assessment) for a patient. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Clinical impression summary text",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "assessor": {
+                        "type": "string",
+                        "description": "Assessor display name (e.g., 'Infectious Disease Agent')",
+                    },
+                    "finding_code": {
+                        "type": "string",
+                        "description": "SNOMED finding code",
+                    },
+                    "finding_display": {
+                        "type": "string",
+                        "description": "SNOMED finding display text",
+                    },
+                    "notes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of note strings",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["in-progress", "completed", "entered-in-error"],
+                        "description": "Impression status (default: completed)",
+                    },
+                },
+                "required": ["patient_id", "summary"],
+            },
+        ),
+        Tool(
+            name="get_clinical_impressions",
+            description="Get clinical impressions for a patient, optionally filtered by encounter and status.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="create_risk_assessment",
+            description="Create a risk assessment for a patient condition. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "condition_display": {
+                        "type": "string",
+                        "description": "Condition being assessed (e.g., 'Septic shock')",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "outcome_text": {
+                        "type": "string",
+                        "description": "Prediction outcome text (e.g., 'Deterioration within 6 hours')",
+                    },
+                    "risk_level": {
+                        "type": "string",
+                        "enum": ["negligible", "low", "moderate", "high", "certain"],
+                        "description": "Qualitative risk level",
+                    },
+                    "basis": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Basis for assessment (e.g., ['NEWS2 score: 9', 'qSOFA score: 2'])",
+                    },
+                    "notes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of note strings",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["registered", "preliminary", "final", "amended"],
+                        "description": "Assessment status (default: final)",
+                    },
+                },
+                "required": ["patient_id", "condition_display"],
+            },
+        ),
+        Tool(
+            name="get_risk_assessments",
+            description="Get risk assessments for a patient, optionally filtered by encounter.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        # Phase 1: Task Management
+        Tool(
+            name="create_task",
+            description="Create a care coordination task for a patient. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Task description text",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["routine", "urgent", "asap", "stat"],
+                        "description": "Task priority (default: routine)",
+                    },
+                    "requester": {
+                        "type": "string",
+                        "description": "Requester display name (default: Supervisor Agent)",
+                    },
+                    "owner": {
+                        "type": "string",
+                        "description": "Assignee display name (optional)",
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": "Due date in ISO datetime format",
+                    },
+                    "notes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of note strings",
+                    },
+                    "intent": {
+                        "type": "string",
+                        "description": "Task intent (default: order)",
+                    },
+                },
+                "required": ["patient_id", "description"],
+            },
+        ),
+        Tool(
+            name="assign_task",
+            description="Assign a task to an owner. Accepts the task if currently in requested status.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "FHIR Task ID",
+                    },
+                    "owner": {
+                        "type": "string",
+                        "description": "Assignee display name",
+                    },
+                },
+                "required": ["task_id", "owner"],
+            },
+        ),
+        Tool(
+            name="complete_task",
+            description="Mark a task as completed, optionally with completion notes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "FHIR Task ID",
+                    },
+                    "output_text": {
+                        "type": "string",
+                        "description": "Completion notes (optional)",
+                    },
+                },
+                "required": ["task_id"],
+            },
+        ),
+        Tool(
+            name="get_pending_tasks",
+            description="Get pending (non-completed) tasks for a patient.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Comma-separated status filter (default: requested,accepted,in-progress)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="update_task_status",
+            description="Update the status of a task. Sets executionPeriod timestamps on status transitions.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "FHIR Task ID",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["draft", "requested", "received", "accepted", "rejected", "ready", "cancelled", "in-progress", "on-hold", "failed", "completed", "entered-in-error"],
+                        "description": "New task status",
+                    },
+                },
+                "required": ["task_id", "status"],
+            },
+        ),
     ]
 
 
@@ -1360,6 +1617,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await handle_get_active_flags(arguments)
         elif name == "resolve_flag":
             result = await handle_resolve_flag(arguments)
+        # Phase 1: Clinical Assessment
+        elif name == "create_clinical_impression":
+            result = await handle_create_clinical_impression(arguments)
+        elif name == "get_clinical_impressions":
+            result = await handle_get_clinical_impressions(arguments)
+        elif name == "create_risk_assessment":
+            result = await handle_create_risk_assessment(arguments)
+        elif name == "get_risk_assessments":
+            result = await handle_get_risk_assessments(arguments)
+        # Phase 1: Task Management
+        elif name == "create_task":
+            result = await handle_create_task(arguments)
+        elif name == "assign_task":
+            result = await handle_assign_task(arguments)
+        elif name == "complete_task":
+            result = await handle_complete_task(arguments)
+        elif name == "get_pending_tasks":
+            result = await handle_get_pending_tasks(arguments)
+        elif name == "update_task_status":
+            result = await handle_update_task_status(arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3126,6 +3403,440 @@ async def handle_resolve_flag(args: dict) -> dict:
         "old_status": old_status,
         "new_status": "inactive",
         "message": f"Flag resolved. Status changed from '{old_status}' to 'inactive'",
+    }
+
+
+# =============================================================================
+# Clinical Assessment (ClinicalImpression + RiskAssessment)
+# =============================================================================
+
+
+async def handle_create_clinical_impression(args: dict) -> dict:
+    """Create a clinical impression (assessment) for a patient."""
+    patient_id = args["patient_id"]
+    summary_text = args["summary"]
+    encounter_id = args.get("encounter_id")
+    assessor = args.get("assessor")
+    finding_code = args.get("finding_code")
+    finding_display = args.get("finding_display")
+    notes = args.get("notes", [])
+    status = args.get("status", "completed")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    impression = {
+        "resourceType": "ClinicalImpression",
+        "status": status,
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "date": now_iso,
+        "summary": summary_text,
+    }
+
+    if encounter_id:
+        impression["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if assessor:
+        impression["assessor"] = {
+            "display": assessor,
+        }
+
+    if finding_code or finding_display:
+        finding_item = {}
+        coding = {
+            "system": "http://snomed.info/sct",
+        }
+        if finding_code:
+            coding["code"] = finding_code
+        if finding_display:
+            coding["display"] = finding_display
+        finding_item["itemCodeableConcept"] = {
+            "coding": [coding],
+        }
+        if finding_display:
+            finding_item["itemCodeableConcept"]["text"] = finding_display
+        impression["finding"] = [finding_item]
+
+    if notes:
+        impression["note"] = [{"text": n} for n in notes]
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.CLINICAL_IMPRESSION,
+        patient_id=patient_id,
+        resource=impression,
+        fhir_id=None,
+        summary=f"Clinical impression: {summary_text[:80]}",
+        metadata={"requester": assessor or "agent"},
+    )
+
+    return {
+        "impression_id": None,
+        "status": status,
+        "summary": summary_text,
+        "action_id": action.action_id,
+        "message": "Clinical impression queued for approval.",
+    }
+
+
+async def handle_get_clinical_impressions(args: dict) -> dict:
+    """Get clinical impressions for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+    status_filter = args.get("status")
+
+    params = {"patient": patient_id}
+    if encounter_id:
+        params["encounter"] = encounter_id
+    if status_filter:
+        params["status"] = status_filter
+
+    bundle = await fhir_client.search("ClinicalImpression", params)
+
+    impressions = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        findings = []
+        for finding in resource.get("finding", []):
+            item_cc = finding.get("itemCodeableConcept")
+            if item_cc:
+                findings.append(extract_code_display(item_cc))
+
+        impressions.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "date": resource.get("date"),
+            "assessor": resource.get("assessor", {}).get("display"),
+            "summary": resource.get("summary"),
+            "findings": findings,
+        })
+
+    return {
+        "total": bundle.get("total", len(impressions)),
+        "impressions": impressions,
+    }
+
+
+async def handle_create_risk_assessment(args: dict) -> dict:
+    """Create a risk assessment for a patient."""
+    patient_id = args["patient_id"]
+    condition_display = args["condition_display"]
+    encounter_id = args.get("encounter_id")
+    outcome_text = args.get("outcome_text")
+    risk_level = args.get("risk_level")
+    basis = args.get("basis", [])
+    notes = args.get("notes", [])
+    status = args.get("status", "final")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    assessment = {
+        "resourceType": "RiskAssessment",
+        "status": status,
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "occurrenceDateTime": now_iso,
+        "condition": {
+            "display": condition_display,
+        },
+    }
+
+    if encounter_id:
+        assessment["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if outcome_text or risk_level:
+        prediction = {}
+        if outcome_text:
+            prediction["outcome"] = {"text": outcome_text}
+        if risk_level:
+            prediction["qualitativeRisk"] = {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/risk-probability",
+                    "code": risk_level,
+                    "display": risk_level.capitalize(),
+                }],
+                "text": risk_level,
+            }
+        assessment["prediction"] = [prediction]
+
+    if basis:
+        assessment["basis"] = [{"display": b} for b in basis]
+
+    if notes:
+        assessment["note"] = [{"text": n} for n in notes]
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.RISK_ASSESSMENT,
+        patient_id=patient_id,
+        resource=assessment,
+        fhir_id=None,
+        summary=f"Risk assessment: {condition_display}" + (f" ({risk_level})" if risk_level else ""),
+        metadata={"requester": "agent"},
+    )
+
+    return {
+        "assessment_id": None,
+        "condition": condition_display,
+        "risk_level": risk_level,
+        "action_id": action.action_id,
+        "message": "Risk assessment queued for approval.",
+    }
+
+
+async def handle_get_risk_assessments(args: dict) -> dict:
+    """Get risk assessments for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+
+    params = {"patient": patient_id}
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("RiskAssessment", params)
+
+    assessments = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        predictions = []
+        for pred in resource.get("prediction", []):
+            predictions.append({
+                "outcome": pred.get("outcome", {}).get("text"),
+                "risk_level": extract_code_display(pred.get("qualitativeRisk")),
+            })
+
+        basis_list = []
+        for b in resource.get("basis", []):
+            basis_list.append(b.get("display") or b.get("reference", ""))
+
+        assessments.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "date": resource.get("occurrenceDateTime"),
+            "condition": resource.get("condition", {}).get("display"),
+            "predictions": predictions,
+            "basis": basis_list,
+        })
+
+    return {
+        "total": bundle.get("total", len(assessments)),
+        "assessments": assessments,
+    }
+
+
+# =============================================================================
+# Task Management
+# =============================================================================
+
+
+async def handle_create_task(args: dict) -> dict:
+    """Create a care coordination task for a patient."""
+    patient_id = args["patient_id"]
+    description = args["description"]
+    encounter_id = args.get("encounter_id")
+    priority = args.get("priority", "routine")
+    requester = args.get("requester", "Supervisor Agent")
+    owner = args.get("owner")
+    due_date = args.get("due_date")
+    notes = args.get("notes", [])
+    intent = args.get("intent", "order")
+
+    task = {
+        "resourceType": "Task",
+        "status": "requested",
+        "intent": intent,
+        "priority": priority,
+        "code": {
+            "text": description,
+        },
+        "for": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "requester": {
+            "display": requester,
+        },
+    }
+
+    if encounter_id:
+        task["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if owner:
+        task["owner"] = {
+            "display": owner,
+        }
+
+    if due_date:
+        task["restriction"] = {
+            "period": {
+                "end": due_date,
+            },
+        }
+
+    if notes:
+        task["note"] = [{"text": n} for n in notes]
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.TASK,
+        patient_id=patient_id,
+        resource=task,
+        fhir_id=None,
+        summary=f"Task: {description[:80]} ({priority})",
+        metadata={"requester": requester},
+    )
+
+    return {
+        "task_id": None,
+        "status": "requested",
+        "priority": priority,
+        "description": description,
+        "action_id": action.action_id,
+        "message": "Task queued for approval.",
+    }
+
+
+async def handle_assign_task(args: dict) -> dict:
+    """Assign a task to an owner."""
+    task_id = args["task_id"]
+    owner = args["owner"]
+
+    try:
+        current = await fhir_client.read("Task", task_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Task {task_id} not found"}
+        raise
+
+    current["owner"] = {"display": owner}
+
+    if current.get("status") == "requested":
+        current["status"] = "accepted"
+
+    await fhir_client.update("Task", task_id, current)
+
+    return {
+        "task_id": task_id,
+        "owner": owner,
+        "status": current["status"],
+        "message": f"Task assigned to {owner}. Status: {current['status']}",
+    }
+
+
+async def handle_complete_task(args: dict) -> dict:
+    """Mark a task as completed."""
+    task_id = args["task_id"]
+    output_text = args.get("output_text")
+
+    try:
+        current = await fhir_client.read("Task", task_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Task {task_id} not found"}
+        raise
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    current["status"] = "completed"
+
+    if "executionPeriod" not in current:
+        current["executionPeriod"] = {}
+    current["executionPeriod"]["end"] = now_iso
+
+    if output_text:
+        if "output" not in current:
+            current["output"] = []
+        current["output"].append({
+            "type": {"text": "Completion notes"},
+            "valueString": output_text,
+        })
+
+    await fhir_client.update("Task", task_id, current)
+
+    return {
+        "task_id": task_id,
+        "status": "completed",
+        "completed_at": now_iso,
+        "message": "Task marked as completed.",
+    }
+
+
+async def handle_get_pending_tasks(args: dict) -> dict:
+    """Get pending (non-completed) tasks for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+    status = args.get("status", "requested,accepted,in-progress")
+
+    params = {
+        "patient": patient_id,
+        "status": status,
+    }
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("Task", params)
+
+    tasks = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        tasks.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "priority": resource.get("priority"),
+            "description": resource.get("code", {}).get("text"),
+            "owner": resource.get("owner", {}).get("display"),
+            "due_date": resource.get("restriction", {}).get("period", {}).get("end"),
+            "requester": resource.get("requester", {}).get("display"),
+        })
+
+    return {
+        "total": bundle.get("total", len(tasks)),
+        "tasks": tasks,
+    }
+
+
+async def handle_update_task_status(args: dict) -> dict:
+    """Update the status of a task."""
+    task_id = args["task_id"]
+    new_status = args["status"]
+
+    try:
+        current = await fhir_client.read("Task", task_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Task {task_id} not found"}
+        raise
+
+    old_status = current.get("status", "unknown")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    current["status"] = new_status
+
+    if new_status == "in-progress":
+        if "executionPeriod" not in current:
+            current["executionPeriod"] = {}
+        current["executionPeriod"]["start"] = now_iso
+    elif new_status in ("completed", "failed"):
+        if "executionPeriod" not in current:
+            current["executionPeriod"] = {}
+        current["executionPeriod"]["end"] = now_iso
+
+    await fhir_client.update("Task", task_id, current)
+
+    return {
+        "task_id": task_id,
+        "old_status": old_status,
+        "new_status": new_status,
+        "message": f"Task status changed from '{old_status}' to '{new_status}'",
     }
 
 
