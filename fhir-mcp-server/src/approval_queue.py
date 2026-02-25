@@ -39,6 +39,16 @@ class ActionType(str, Enum):
     ALLERGY_INTOLERANCE = "AllergyIntolerance"
     CONDITION = "Condition"
     PROCEDURE = "Procedure"
+    # Phase 1 inpatient additions
+    ENCOUNTER = "Encounter"
+    FLAG = "Flag"
+    CLINICAL_IMPRESSION = "ClinicalImpression"
+    RISK_ASSESSMENT = "RiskAssessment"
+    TASK = "Task"
+    CARE_TEAM = "CareTeam"
+    GOAL = "Goal"
+    DEVICE_METRIC = "DeviceMetric"
+    ADVERSE_EVENT = "AdverseEvent"
 
 
 @dataclass
