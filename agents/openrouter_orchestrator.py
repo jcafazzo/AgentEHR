@@ -578,6 +578,125 @@ FHIR_TOOLS = [
             "required": ["note_id"],
         },
     },
+
+    # =============================================================================
+    # Phase 1: Inpatient Encounter Lifecycle
+    # =============================================================================
+    {
+        "name": "create_inpatient_encounter",
+        "description": "Create an inpatient encounter (admission) for a patient. Creates as draft requiring clinician approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "reason": {"type": "string", "description": "Reason for admission"},
+                "admit_source": {"type": "string", "description": "Admit source code (default: emd)"},
+                "location": {"type": "string", "description": "Initial location/ward (default: General Ward)"},
+                "priority": {"type": "string", "enum": ["routine", "urgent", "asap", "stat"], "description": "Admission priority"},
+                "type_code": {"type": "string", "description": "SNOMED encounter type code"},
+                "type_display": {"type": "string", "description": "Encounter type display text"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "update_encounter_status",
+        "description": "Update the status of an existing encounter (e.g., planned, arrived, in-progress, finished).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "encounter_id": {"type": "string", "description": "FHIR Encounter ID"},
+                "status": {
+                    "type": "string",
+                    "enum": ["planned", "arrived", "triaged", "in-progress", "onleave", "finished", "cancelled", "entered-in-error"],
+                    "description": "New encounter status",
+                },
+            },
+            "required": ["encounter_id", "status"],
+        },
+    },
+    {
+        "name": "get_encounter_timeline",
+        "description": "Get a comprehensive encounter timeline including observations, conditions, medications, and flags.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "encounter_id": {"type": "string", "description": "FHIR Encounter ID"},
+            },
+            "required": ["encounter_id"],
+        },
+    },
+    {
+        "name": "transfer_patient",
+        "description": "Transfer a patient to a new location within the hospital during an encounter.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "encounter_id": {"type": "string", "description": "FHIR Encounter ID"},
+                "new_location": {"type": "string", "description": "New location/ward name"},
+                "new_location_status": {"type": "string", "description": "Status of the new location (default: active)"},
+            },
+            "required": ["encounter_id", "new_location"],
+        },
+    },
+    {
+        "name": "discharge_patient",
+        "description": "Discharge a patient from an inpatient encounter. Sets status to finished and records disposition.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "encounter_id": {"type": "string", "description": "FHIR Encounter ID"},
+                "discharge_disposition": {"type": "string", "description": "Discharge disposition code (default: home)"},
+                "discharge_display": {"type": "string", "description": "Discharge disposition display text (default: Discharge to home)"},
+            },
+            "required": ["encounter_id"],
+        },
+    },
+
+    # Phase 1: Clinical Flags
+    {
+        "name": "create_flag",
+        "description": "Create a clinical flag/alert for a patient (e.g., fall risk, drug allergy, isolation). Requires clinician approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "description": {"type": "string", "description": "Flag description text"},
+                "category": {
+                    "type": "string",
+                    "enum": ["clinical", "safety", "drug", "lab", "contact", "behavioral", "research", "advance-directive"],
+                    "description": "Flag category (default: clinical)",
+                },
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "priority": {"type": "string", "enum": ["PN", "PL", "PM", "PH"], "description": "Flag priority: PN=none, PL=low, PM=medium, PH=high"},
+                "author": {"type": "string", "description": "Author display name (optional)"},
+            },
+            "required": ["patient_id", "description"],
+        },
+    },
+    {
+        "name": "get_active_flags",
+        "description": "Get all active clinical flags for a patient, optionally filtered by encounter.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "resolve_flag",
+        "description": "Resolve (inactivate) a clinical flag, setting its end date to now.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "flag_id": {"type": "string", "description": "FHIR Flag ID"},
+            },
+            "required": ["flag_id"],
+        },
+    },
 ]
 
 
@@ -699,6 +818,15 @@ class OpenRouterOrchestrator:
                 # Clinical notes (DocumentReference)
                 handle_search_clinical_notes,
                 handle_get_clinical_note,
+                # Phase 1: Inpatient Encounter Lifecycle + Clinical Flags
+                handle_create_inpatient_encounter,
+                handle_update_encounter_status,
+                handle_get_encounter_timeline,
+                handle_transfer_patient,
+                handle_discharge_patient,
+                handle_create_flag,
+                handle_get_active_flags,
+                handle_resolve_flag,
             )
 
             self.handlers = {
@@ -741,6 +869,15 @@ class OpenRouterOrchestrator:
                 # Clinical notes (DocumentReference)
                 "search_clinical_notes": handle_search_clinical_notes,
                 "get_clinical_note": handle_get_clinical_note,
+                # Phase 1: Inpatient Encounter Lifecycle + Clinical Flags
+                "create_inpatient_encounter": handle_create_inpatient_encounter,
+                "update_encounter_status": handle_update_encounter_status,
+                "get_encounter_timeline": handle_get_encounter_timeline,
+                "transfer_patient": handle_transfer_patient,
+                "discharge_patient": handle_discharge_patient,
+                "create_flag": handle_create_flag,
+                "get_active_flags": handle_get_active_flags,
+                "resolve_flag": handle_resolve_flag,
             }
             logger.info("Tool handlers imported successfully")
 

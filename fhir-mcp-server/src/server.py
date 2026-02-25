@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -1073,6 +1074,198 @@ async def list_tools() -> list[Tool]:
                 "required": ["patient_id"],
             },
         ),
+
+        # =============================================================================
+        # Phase 1: Inpatient Encounter Lifecycle
+        # =============================================================================
+        Tool(
+            name="create_inpatient_encounter",
+            description="Create an inpatient encounter (admission) for a patient. Creates as draft requiring clinician approval.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for admission",
+                    },
+                    "admit_source": {
+                        "type": "string",
+                        "description": "Admit source code (default: emd)",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Initial location/ward (default: General Ward)",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["routine", "urgent", "asap", "stat"],
+                        "description": "Admission priority",
+                    },
+                    "type_code": {
+                        "type": "string",
+                        "description": "SNOMED encounter type code",
+                    },
+                    "type_display": {
+                        "type": "string",
+                        "description": "Encounter type display text",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="update_encounter_status",
+            description="Update the status of an existing encounter (e.g., planned, arrived, in-progress, finished).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "FHIR Encounter ID",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["planned", "arrived", "triaged", "in-progress", "onleave", "finished", "cancelled", "entered-in-error"],
+                        "description": "New encounter status",
+                    },
+                },
+                "required": ["encounter_id", "status"],
+            },
+        ),
+        Tool(
+            name="get_encounter_timeline",
+            description="Get a comprehensive encounter timeline including observations, conditions, medications, and flags.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "FHIR Encounter ID",
+                    },
+                },
+                "required": ["encounter_id"],
+            },
+        ),
+        Tool(
+            name="transfer_patient",
+            description="Transfer a patient to a new location within the hospital during an encounter.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "FHIR Encounter ID",
+                    },
+                    "new_location": {
+                        "type": "string",
+                        "description": "New location/ward name",
+                    },
+                    "new_location_status": {
+                        "type": "string",
+                        "description": "Status of the new location (default: active)",
+                    },
+                },
+                "required": ["encounter_id", "new_location"],
+            },
+        ),
+        Tool(
+            name="discharge_patient",
+            description="Discharge a patient from an inpatient encounter. Sets status to finished and records disposition.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "FHIR Encounter ID",
+                    },
+                    "discharge_disposition": {
+                        "type": "string",
+                        "description": "Discharge disposition code (default: home)",
+                    },
+                    "discharge_display": {
+                        "type": "string",
+                        "description": "Discharge disposition display text (default: Discharge to home)",
+                    },
+                },
+                "required": ["encounter_id"],
+            },
+        ),
+
+        # =============================================================================
+        # Phase 1: Clinical Flags
+        # =============================================================================
+        Tool(
+            name="create_flag",
+            description="Create a clinical flag/alert for a patient (e.g., fall risk, drug allergy, isolation). Requires clinician approval.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Flag description text",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["clinical", "safety", "drug", "lab", "contact", "behavioral", "research", "advance-directive"],
+                        "description": "Flag category (default: clinical)",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["PN", "PL", "PM", "PH"],
+                        "description": "Flag priority: PN=none, PL=low, PM=medium, PH=high",
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Author display name (optional)",
+                    },
+                },
+                "required": ["patient_id", "description"],
+            },
+        ),
+        Tool(
+            name="get_active_flags",
+            description="Get all active clinical flags for a patient, optionally filtered by encounter.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="resolve_flag",
+            description="Resolve (inactivate) a clinical flag, setting its end date to now.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flag_id": {
+                        "type": "string",
+                        "description": "FHIR Flag ID",
+                    },
+                },
+                "required": ["flag_id"],
+            },
+        ),
     ]
 
 
@@ -1149,6 +1342,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await handle_search_referrals(arguments)
         elif name == "get_immunization_status":
             result = await handle_get_immunization_status(arguments)
+        # Phase 1: Inpatient Encounter Lifecycle
+        elif name == "create_inpatient_encounter":
+            result = await handle_create_inpatient_encounter(arguments)
+        elif name == "update_encounter_status":
+            result = await handle_update_encounter_status(arguments)
+        elif name == "get_encounter_timeline":
+            result = await handle_get_encounter_timeline(arguments)
+        elif name == "transfer_patient":
+            result = await handle_transfer_patient(arguments)
+        elif name == "discharge_patient":
+            result = await handle_discharge_patient(arguments)
+        # Phase 1: Clinical Flags
+        elif name == "create_flag":
+            result = await handle_create_flag(arguments)
+        elif name == "get_active_flags":
+            result = await handle_get_active_flags(arguments)
+        elif name == "resolve_flag":
+            result = await handle_resolve_flag(arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -2406,6 +2617,516 @@ async def handle_reconcile_medications(args: dict) -> dict:
     results["message"] = f"Medication reconciliation complete: {', '.join(summary_parts)}"
 
     return results
+
+
+# =============================================================================
+# Inpatient Encounter Lifecycle
+# =============================================================================
+
+
+async def handle_create_inpatient_encounter(args: dict) -> dict:
+    """Create an inpatient encounter for a patient."""
+    patient_id = args["patient_id"]
+    reason = args.get("reason", "Inpatient admission")
+    admit_source = args.get("admit_source", "emd")
+    location = args.get("location", "General Ward")
+    priority = args.get("priority", "routine")
+    type_code = args.get("type_code")
+    type_display = args.get("type_display")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    encounter = {
+        "resourceType": "Encounter",
+        "status": "in-progress",
+        "class": {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            "code": "IMP",
+            "display": "inpatient encounter",
+        },
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "period": {
+            "start": now_iso,
+        },
+        "reasonCode": [
+            {
+                "text": reason,
+            }
+        ],
+        "hospitalization": {
+            "admitSource": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/admit-source",
+                        "code": admit_source,
+                    }
+                ]
+            },
+        },
+        "location": [
+            {
+                "location": {
+                    "display": location,
+                },
+                "status": "active",
+                "period": {
+                    "start": now_iso,
+                },
+            }
+        ],
+        "priority": {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActPriority",
+                    "code": priority,
+                    "display": priority,
+                }
+            ]
+        },
+    }
+
+    if type_code or type_display:
+        encounter["type"] = [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": type_code or "unknown",
+                        "display": type_display or type_code or "Unknown",
+                    }
+                ]
+            }
+        ]
+
+    result = await fhir_client.create("Encounter", encounter)
+    fhir_id = result.get("id")
+
+    summary = f"Inpatient admission: {reason} at {location}"
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.ENCOUNTER,
+        patient_id=patient_id,
+        resource=encounter,
+        fhir_id=fhir_id,
+        summary=summary,
+        metadata={"requester": "agent", "admit_source": admit_source, "priority": priority},
+    )
+
+    return {
+        "status": "in-progress",
+        "message": "Inpatient encounter created. Requires clinician approval.",
+        "action_id": action.action_id,
+        "encounter_id": fhir_id,
+    }
+
+
+async def handle_update_encounter_status(args: dict) -> dict:
+    """Update the status of an existing encounter."""
+    encounter_id = args["encounter_id"]
+    new_status = args["status"]
+
+    valid_statuses = [
+        "planned", "arrived", "triaged", "in-progress",
+        "onleave", "finished", "cancelled", "entered-in-error",
+    ]
+    if new_status not in valid_statuses:
+        return {"error": f"Invalid status '{new_status}'. Must be one of: {', '.join(valid_statuses)}"}
+
+    try:
+        current = await fhir_client.read("Encounter", encounter_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Encounter {encounter_id} not found"}
+        raise
+
+    old_status = current.get("status", "unknown")
+    current["status"] = new_status
+
+    if new_status == "finished":
+        if "period" not in current:
+            current["period"] = {}
+        current["period"]["end"] = datetime.now(timezone.utc).isoformat()
+
+    await fhir_client.update("Encounter", encounter_id, current)
+
+    return {
+        "encounter_id": encounter_id,
+        "old_status": old_status,
+        "new_status": new_status,
+        "message": f"Encounter status updated from '{old_status}' to '{new_status}'",
+    }
+
+
+async def handle_get_encounter_timeline(args: dict) -> dict:
+    """Get a comprehensive timeline for an encounter."""
+    encounter_id = args["encounter_id"]
+
+    results = await asyncio.gather(
+        fhir_client.read("Encounter", encounter_id),
+        fhir_client.search("Observation", {"encounter": encounter_id, "_sort": "-date", "_count": "50"}),
+        fhir_client.search("Condition", {"encounter": encounter_id}),
+        fhir_client.search("MedicationRequest", {"encounter": encounter_id}),
+        fhir_client.search("Flag", {"encounter": encounter_id}),
+        return_exceptions=True,
+    )
+
+    encounter_data, obs_bundle, cond_bundle, med_bundle, flag_bundle = results
+
+    if isinstance(encounter_data, Exception):
+        return {"error": f"Failed to read encounter {encounter_id}: {str(encounter_data)}"}
+
+    encounter_info = {
+        "id": encounter_data.get("id"),
+        "status": encounter_data.get("status"),
+        "class": encounter_data.get("class", {}).get("display"),
+        "period": encounter_data.get("period"),
+        "location": [
+            loc.get("location", {}).get("display")
+            for loc in encounter_data.get("location", [])
+        ],
+    }
+
+    observations = []
+    if not isinstance(obs_bundle, Exception):
+        for entry in obs_bundle.get("entry", []):
+            resource = entry.get("resource", {})
+            observations.append({
+                "id": resource.get("id"),
+                "code": extract_code_display(resource.get("code")),
+                "value": extract_observation_value(resource),
+                "effective_date": resource.get("effectiveDateTime"),
+            })
+
+    conditions = []
+    if not isinstance(cond_bundle, Exception):
+        for entry in cond_bundle.get("entry", []):
+            resource = entry.get("resource", {})
+            conditions.append({
+                "id": resource.get("id"),
+                "code": extract_code_display(resource.get("code")),
+                "clinical_status": extract_code_display(resource.get("clinicalStatus")),
+                "onset": resource.get("onsetDateTime"),
+            })
+
+    medications = []
+    if not isinstance(med_bundle, Exception):
+        for entry in med_bundle.get("entry", []):
+            resource = entry.get("resource", {})
+            medications.append({
+                "id": resource.get("id"),
+                "medication": extract_medication_name(resource),
+                "status": resource.get("status"),
+                "authored_on": resource.get("authoredOn"),
+            })
+
+    flags = []
+    if not isinstance(flag_bundle, Exception):
+        for entry in flag_bundle.get("entry", []):
+            resource = entry.get("resource", {})
+            category_list = resource.get("category", [])
+            category = extract_code_display(category_list[0]) if category_list else "Unknown"
+            flags.append({
+                "id": resource.get("id"),
+                "status": resource.get("status"),
+                "code": extract_code_display(resource.get("code")),
+                "category": category,
+            })
+
+    warnings = []
+    section_names = ["observations", "conditions", "medications", "flags"]
+    section_results = [obs_bundle, cond_bundle, med_bundle, flag_bundle]
+    for name, res in zip(section_names, section_results):
+        if isinstance(res, Exception):
+            warnings.append(f"Failed to fetch {name}: {str(res)}")
+
+    timeline = {
+        "encounter": encounter_info,
+        "observations": observations,
+        "conditions": conditions,
+        "medications": medications,
+        "flags": flags,
+    }
+
+    if warnings:
+        timeline["warnings"] = warnings
+
+    return timeline
+
+
+async def handle_transfer_patient(args: dict) -> dict:
+    """Transfer a patient to a new location within the hospital."""
+    encounter_id = args["encounter_id"]
+    new_location = args["new_location"]
+    new_location_status = args.get("new_location_status", "active")
+
+    try:
+        current = await fhir_client.read("Encounter", encounter_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Encounter {encounter_id} not found"}
+        raise
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    locations = current.get("location", [])
+    old_location = None
+
+    for loc in locations:
+        if loc.get("status") == "active":
+            old_location = loc.get("location", {}).get("display", "Unknown")
+            loc["status"] = "completed"
+            if "period" not in loc:
+                loc["period"] = {}
+            loc["period"]["end"] = now_iso
+
+    locations.append({
+        "location": {
+            "display": new_location,
+        },
+        "status": new_location_status,
+        "period": {
+            "start": now_iso,
+        },
+    })
+
+    current["location"] = locations
+    await fhir_client.update("Encounter", encounter_id, current)
+
+    return {
+        "encounter_id": encounter_id,
+        "old_location": old_location or "Unknown",
+        "new_location": new_location,
+        "message": f"Patient transferred from '{old_location or 'Unknown'}' to '{new_location}'",
+    }
+
+
+async def handle_discharge_patient(args: dict) -> dict:
+    """Discharge a patient from an inpatient encounter."""
+    encounter_id = args["encounter_id"]
+    discharge_disposition = args.get("discharge_disposition", "home")
+    discharge_display = args.get("discharge_display", "Discharge to home")
+
+    try:
+        current = await fhir_client.read("Encounter", encounter_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Encounter {encounter_id} not found"}
+        raise
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    current["status"] = "finished"
+
+    if "period" not in current:
+        current["period"] = {}
+    current["period"]["end"] = now_iso
+
+    if "hospitalization" not in current:
+        current["hospitalization"] = {}
+    current["hospitalization"]["dischargeDisposition"] = {
+        "coding": [
+            {
+                "system": "http://terminology.hl7.org/CodeSystem/discharge-disposition",
+                "code": discharge_disposition,
+                "display": discharge_display,
+            }
+        ],
+        "text": discharge_display,
+    }
+
+    await fhir_client.update("Encounter", encounter_id, current)
+
+    length_of_stay = None
+    period = current.get("period", {})
+    start_str = period.get("start")
+    end_str = period.get("end")
+    if start_str and end_str:
+        try:
+            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+            delta = end_dt - start_dt
+            length_of_stay = f"{delta.days} days, {delta.seconds // 3600} hours"
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "encounter_id": encounter_id,
+        "status": "finished",
+        "discharge_disposition": discharge_disposition,
+        "length_of_stay": length_of_stay,
+        "message": f"Patient discharged. Disposition: {discharge_display}",
+    }
+
+
+# =============================================================================
+# Clinical Flags
+# =============================================================================
+
+
+async def handle_create_flag(args: dict) -> dict:
+    """Create a clinical flag/alert for a patient."""
+    patient_id = args["patient_id"]
+    description = args["description"]
+    category = args.get("category", "clinical")
+    encounter_id = args.get("encounter_id")
+    priority = args.get("priority")
+    author = args.get("author")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    category_map = {
+        "clinical": ("clinical", "Clinical"),
+        "safety": ("safety", "Safety"),
+        "drug": ("drug", "Drug"),
+        "lab": ("lab", "Lab"),
+        "contact": ("contact", "Contact"),
+        "behavioral": ("behavioral", "Behavioral"),
+        "research": ("research", "Research"),
+        "advance-directive": ("advance-directive", "Advance Directive"),
+    }
+
+    cat_code, cat_display = category_map.get(category, ("clinical", "Clinical"))
+
+    flag_resource = {
+        "resourceType": "Flag",
+        "status": "active",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/flag-category",
+                        "code": cat_code,
+                        "display": cat_display,
+                    }
+                ]
+            }
+        ],
+        "code": {
+            "text": description,
+        },
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "period": {
+            "start": now_iso,
+        },
+    }
+
+    if encounter_id:
+        flag_resource["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if priority:
+        flag_resource["extension"] = [
+            {
+                "url": "http://hl7.org/fhir/StructureDefinition/flag-priority",
+                "valueCodeableConcept": {
+                    "coding": [
+                        {
+                            "system": "http://hl7.org/fhir/flag-priority-code",
+                            "code": priority,
+                        }
+                    ]
+                },
+            }
+        ]
+
+    if author:
+        flag_resource["author"] = {
+            "display": author,
+        }
+
+    result = await fhir_client.create("Flag", flag_resource)
+    fhir_id = result.get("id")
+
+    summary = f"Flag ({cat_display}): {description}"
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.FLAG,
+        patient_id=patient_id,
+        resource=flag_resource,
+        fhir_id=fhir_id,
+        summary=summary,
+        metadata={"requester": "agent", "category": category},
+    )
+
+    return {
+        "status": "active",
+        "message": "Clinical flag created. Requires clinician approval.",
+        "action_id": action.action_id,
+        "flag": {
+            "id": fhir_id,
+            "description": description,
+            "category": cat_display,
+            "status": "active",
+        },
+    }
+
+
+async def handle_get_active_flags(args: dict) -> dict:
+    """Get active clinical flags for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+
+    params = {
+        "patient": patient_id,
+        "status": "active",
+    }
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("Flag", params)
+
+    flags = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        category_list = resource.get("category", [])
+        category = extract_code_display(category_list[0]) if category_list else "Unknown"
+        flags.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "category": category,
+            "code": extract_code_display(resource.get("code")),
+            "period": resource.get("period"),
+        })
+
+    return {
+        "total": bundle.get("total", len(flags)),
+        "flags": flags,
+    }
+
+
+async def handle_resolve_flag(args: dict) -> dict:
+    """Resolve (inactivate) a clinical flag."""
+    flag_id = args["flag_id"]
+
+    try:
+        current = await fhir_client.read("Flag", flag_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Flag {flag_id} not found"}
+        raise
+
+    old_status = current.get("status", "unknown")
+    current["status"] = "inactive"
+
+    if "period" not in current:
+        current["period"] = {}
+    current["period"]["end"] = datetime.now(timezone.utc).isoformat()
+
+    await fhir_client.update("Flag", flag_id, current)
+
+    return {
+        "flag_id": flag_id,
+        "old_status": old_status,
+        "new_status": "inactive",
+        "message": f"Flag resolved. Status changed from '{old_status}' to 'inactive'",
+    }
 
 
 # =============================================================================
