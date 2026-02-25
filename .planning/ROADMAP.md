@@ -175,7 +175,7 @@
 
 | Requirement | Phase(s) | Status |
 |-------------|----------|--------|
-| FR-01: FHIR Inpatient Resources | 1 | Planned |
+| FR-01: FHIR Inpatient Resources | 1 | In Progress (1/4 plans) |
 | FR-02: Supervisor Agent | 3 | Planned |
 | FR-03: Specialist Sub-Agents | 6 | Planned |
 | FR-04: Clinical Scoring Integration | 3 | Planned (code exists) |

@@ -4,11 +4,13 @@
 
 ## Current Phase: 1 — FHIR Inpatient Resource Expansion
 
+## Current Plan: 2 of 4
+
 ## Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | FHIR Inpatient Resource Expansion | **NEXT** |
+| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (1/4 plans complete) |
 | 2 | Inpatient Seed Data | Planned |
 | 3 | Supervisor Agent | Planned |
 | 4 | Command Center Dashboard | Planned |
@@ -27,8 +29,23 @@
 - ROADMAP.md: 11 phases covering full milestone
 - Phase 1 foundation code already exists: clinical scoring, alert manager, simulation engine
 
+## Decisions
+- Write handlers (create encounter, create flag) route through approval queue; status updates bypass it
+- Timeline handler uses asyncio.gather with return_exceptions=True for graceful degradation
+- Flag priority uses FHIR extension with flag-priority-code system (PN/PL/PM/PH)
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 01 | 01 | 6min | 2 | 4 |
+
 ## Blockers
 None.
+
+## Last Session
+- **Stopped at:** Completed 01-01-PLAN.md
+- **Updated:** 2026-02-25T20:49:19Z
 
 ---
 *Updated: 2026-02-25*
