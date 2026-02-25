@@ -1523,6 +1523,444 @@ async def list_tools() -> list[Tool]:
                 "required": ["task_id", "status"],
             },
         ),
+
+        # =============================================================================
+        # Phase 1: Care Team
+        # =============================================================================
+        Tool(
+            name="create_care_team",
+            description="Create a care team for a patient. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Care team name (e.g., 'ICU Care Team - Patient Smith')",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["proposed", "active", "suspended", "inactive", "entered-in-error"],
+                        "description": "Care team status (default: active)",
+                    },
+                    "participants": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "role_code": {"type": "string", "description": "SNOMED role code"},
+                                "role_display": {"type": "string", "description": "Role display text"},
+                                "member_display": {"type": "string", "description": "Member display name"},
+                            },
+                        },
+                        "description": "List of team participants",
+                    },
+                },
+                "required": ["patient_id", "name"],
+            },
+        ),
+        Tool(
+            name="get_care_team",
+            description="Get care teams for a patient, optionally filtered by encounter and status.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status (default: active)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="update_care_team_member",
+            description="Add or remove a member from a care team.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "care_team_id": {
+                        "type": "string",
+                        "description": "FHIR CareTeam ID",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "remove"],
+                        "description": "Action to perform: add or remove member",
+                    },
+                    "member_display": {
+                        "type": "string",
+                        "description": "Member display name",
+                    },
+                    "role_code": {
+                        "type": "string",
+                        "description": "SNOMED role code (optional, for add)",
+                    },
+                    "role_display": {
+                        "type": "string",
+                        "description": "Role display text (optional, for add)",
+                    },
+                },
+                "required": ["care_team_id", "action", "member_display"],
+            },
+        ),
+
+        # =============================================================================
+        # Phase 1: Goals
+        # =============================================================================
+        Tool(
+            name="create_goal",
+            description="Create a clinical goal for a patient. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Goal description (e.g., 'MAP > 65 mmHg without vasopressors')",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "lifecycle_status": {
+                        "type": "string",
+                        "enum": ["proposed", "planned", "accepted", "active", "on-hold", "completed", "cancelled", "entered-in-error", "rejected"],
+                        "description": "Goal lifecycle status (default: active)",
+                    },
+                    "achievement_status": {
+                        "type": "string",
+                        "enum": ["in-progress", "improving", "worsening", "no-change", "achieved", "sustaining", "not-achieved", "no-progress", "not-attainable"],
+                        "description": "Goal achievement status (default: in-progress)",
+                    },
+                    "target_measure_code": {
+                        "type": "string",
+                        "description": "LOINC code for target measure",
+                    },
+                    "target_measure_display": {
+                        "type": "string",
+                        "description": "Target measure display text",
+                    },
+                    "target_value": {
+                        "type": "number",
+                        "description": "Target value (numeric)",
+                    },
+                    "target_unit": {
+                        "type": "string",
+                        "description": "Target value unit",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Goal start date (ISO date)",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Goal category (e.g., 'clinical')",
+                    },
+                },
+                "required": ["patient_id", "description"],
+            },
+        ),
+        Tool(
+            name="get_patient_goals",
+            description="Get goals for a patient, optionally filtered by lifecycle status and encounter.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "lifecycle_status": {
+                        "type": "string",
+                        "description": "Filter by lifecycle status (optional)",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+        Tool(
+            name="update_goal_status",
+            description="Update the lifecycle status of a goal. Auto-sets achievement to 'achieved' on completion.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "goal_id": {
+                        "type": "string",
+                        "description": "FHIR Goal ID",
+                    },
+                    "lifecycle_status": {
+                        "type": "string",
+                        "enum": ["proposed", "planned", "accepted", "active", "on-hold", "completed", "cancelled", "entered-in-error", "rejected"],
+                        "description": "New lifecycle status",
+                    },
+                    "achievement_status": {
+                        "type": "string",
+                        "enum": ["in-progress", "improving", "worsening", "no-change", "achieved", "sustaining", "not-achieved", "no-progress", "not-attainable"],
+                        "description": "Override achievement status (optional)",
+                    },
+                },
+                "required": ["goal_id", "lifecycle_status"],
+            },
+        ),
+
+        # =============================================================================
+        # Phase 1: Device Metrics
+        # =============================================================================
+        Tool(
+            name="record_device_metric",
+            description="Record a device metric (e.g., SpO2 monitor, ventilator settings). Not patient-scoped.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "type_code": {
+                        "type": "string",
+                        "description": "ISO 11073 device metric code (e.g., '150456')",
+                    },
+                    "type_display": {
+                        "type": "string",
+                        "description": "Device metric display name (e.g., 'SpO2')",
+                    },
+                    "source_display": {
+                        "type": "string",
+                        "description": "Source device name (e.g., 'Bedside Monitor - ICU Bed 3')",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["measurement", "setting", "calculation", "unspecified"],
+                        "description": "Metric category (default: measurement)",
+                    },
+                    "operational_status": {
+                        "type": "string",
+                        "enum": ["on", "off", "standby", "entered-in-error"],
+                        "description": "Operational status (default: on)",
+                    },
+                },
+                "required": ["type_code", "type_display"],
+            },
+        ),
+        Tool(
+            name="get_device_metrics",
+            description="Get device metrics with optional type, category, and source filters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "type_code": {
+                        "type": "string",
+                        "description": "Filter by ISO 11073 type code (optional)",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category (optional)",
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "Filter by source (optional)",
+                    },
+                },
+            },
+        ),
+
+        # =============================================================================
+        # Phase 1: Adverse Events
+        # =============================================================================
+        Tool(
+            name="report_adverse_event",
+            description="Report an adverse event for a patient. Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "event_description": {
+                        "type": "string",
+                        "description": "Description of the adverse event",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "actuality": {
+                        "type": "string",
+                        "enum": ["actual", "potential"],
+                        "description": "Event actuality (default: actual)",
+                    },
+                    "category_code": {
+                        "type": "string",
+                        "description": "Category code (e.g., 'medication-mishap', 'product-use-error', 'wrong-dose')",
+                    },
+                    "seriousness": {
+                        "type": "string",
+                        "enum": ["serious", "non-serious"],
+                        "description": "Event seriousness",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["mild", "moderate", "severe"],
+                        "description": "Event severity",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Event date (ISO datetime, default: now)",
+                    },
+                },
+                "required": ["patient_id", "event_description"],
+            },
+        ),
+        Tool(
+            name="get_adverse_events",
+            description="Get adverse events for a patient with optional filters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                    "actuality": {
+                        "type": "string",
+                        "description": "Filter by actuality (optional)",
+                    },
+                    "seriousness": {
+                        "type": "string",
+                        "description": "Filter by seriousness (optional)",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Filter by date (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
+
+        # =============================================================================
+        # Phase 1: Inpatient Communication
+        # =============================================================================
+        Tool(
+            name="create_inpatient_communication",
+            description="Create an inpatient communication (handoff note, consult request, nursing note). Routes through approval queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Communication message content",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Associated encounter ID (optional)",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["handoff", "consult_request", "nursing_note", "interdisciplinary_note"],
+                        "description": "Communication category (default: handoff)",
+                    },
+                    "sender": {
+                        "type": "string",
+                        "description": "Sender display name (optional)",
+                    },
+                    "recipient": {
+                        "type": "string",
+                        "description": "Recipient display name (optional)",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["routine", "urgent", "asap", "stat"],
+                        "description": "Communication priority (default: routine)",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Communication topic text (optional)",
+                    },
+                },
+                "required": ["patient_id", "content"],
+            },
+        ),
+        Tool(
+            name="get_communications",
+            description="Get communications for an encounter, optionally filtered by category.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "FHIR Encounter ID",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category (optional)",
+                    },
+                },
+                "required": ["encounter_id"],
+            },
+        ),
+        Tool(
+            name="search_communications",
+            description="Search communications for a patient with optional filters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "FHIR Patient ID",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category (optional)",
+                    },
+                    "sender": {
+                        "type": "string",
+                        "description": "Filter by sender (optional)",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Start date filter (ISO date, optional)",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "End date filter (ISO date, optional)",
+                    },
+                    "encounter_id": {
+                        "type": "string",
+                        "description": "Filter by encounter ID (optional)",
+                    },
+                },
+                "required": ["patient_id"],
+            },
+        ),
     ]
 
 
@@ -1637,6 +2075,37 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             result = await handle_get_pending_tasks(arguments)
         elif name == "update_task_status":
             result = await handle_update_task_status(arguments)
+        # Phase 1: Care Team
+        elif name == "create_care_team":
+            result = await handle_create_care_team(arguments)
+        elif name == "get_care_team":
+            result = await handle_get_care_team(arguments)
+        elif name == "update_care_team_member":
+            result = await handle_update_care_team_member(arguments)
+        # Phase 1: Goals
+        elif name == "create_goal":
+            result = await handle_create_goal(arguments)
+        elif name == "get_patient_goals":
+            result = await handle_get_patient_goals(arguments)
+        elif name == "update_goal_status":
+            result = await handle_update_goal_status(arguments)
+        # Phase 1: Device Metrics
+        elif name == "record_device_metric":
+            result = await handle_record_device_metric(arguments)
+        elif name == "get_device_metrics":
+            result = await handle_get_device_metrics(arguments)
+        # Phase 1: Adverse Events
+        elif name == "report_adverse_event":
+            result = await handle_report_adverse_event(arguments)
+        elif name == "get_adverse_events":
+            result = await handle_get_adverse_events(arguments)
+        # Phase 1: Inpatient Communication
+        elif name == "create_inpatient_communication":
+            result = await handle_create_inpatient_communication(arguments)
+        elif name == "get_communications":
+            result = await handle_get_communications(arguments)
+        elif name == "search_communications":
+            result = await handle_search_communications(arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3837,6 +4306,730 @@ async def handle_update_task_status(args: dict) -> dict:
         "old_status": old_status,
         "new_status": new_status,
         "message": f"Task status changed from '{old_status}' to '{new_status}'",
+    }
+
+
+# =============================================================================
+# Care Team
+# =============================================================================
+
+
+async def handle_create_care_team(args: dict) -> dict:
+    """Create a care team for a patient."""
+    patient_id = args["patient_id"]
+    name = args["name"]
+    encounter_id = args.get("encounter_id")
+    status = args.get("status", "active")
+    participants = args.get("participants", [])
+
+    care_team = {
+        "resourceType": "CareTeam",
+        "status": status,
+        "name": name,
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+    }
+
+    if encounter_id:
+        care_team["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    participant_array = []
+    for p in participants:
+        participant_entry = {}
+        if p.get("role_code") or p.get("role_display"):
+            role_coding = {
+                "system": "http://snomed.info/sct",
+            }
+            if p.get("role_code"):
+                role_coding["code"] = p["role_code"]
+            if p.get("role_display"):
+                role_coding["display"] = p["role_display"]
+            participant_entry["role"] = [{
+                "coding": [role_coding],
+            }]
+        if p.get("member_display"):
+            participant_entry["member"] = {
+                "display": p["member_display"],
+            }
+        if participant_entry:
+            participant_array.append(participant_entry)
+
+    if participant_array:
+        care_team["participant"] = participant_array
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.CARE_TEAM,
+        patient_id=patient_id,
+        resource=care_team,
+        fhir_id=None,
+        summary=f"Care team: {name} ({len(participant_array)} participants)",
+        metadata={"requester": "agent"},
+    )
+
+    return {
+        "care_team_id": None,
+        "name": name,
+        "participant_count": len(participant_array),
+        "action_id": action.action_id,
+        "message": "Care team queued for approval.",
+    }
+
+
+async def handle_get_care_team(args: dict) -> dict:
+    """Get care teams for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+    status = args.get("status", "active")
+
+    params = {
+        "patient": patient_id,
+        "status": status,
+    }
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("CareTeam", params)
+
+    care_teams = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        participants = []
+        for p in resource.get("participant", []):
+            role_list = p.get("role", [])
+            role = extract_code_display(role_list[0]) if role_list else "Unknown"
+            member = p.get("member", {}).get("display", "Unknown")
+            participants.append({
+                "role": role,
+                "member": member,
+            })
+
+        care_teams.append({
+            "id": resource.get("id"),
+            "name": resource.get("name"),
+            "status": resource.get("status"),
+            "participants": participants,
+        })
+
+    return {
+        "total": bundle.get("total", len(care_teams)),
+        "care_teams": care_teams,
+    }
+
+
+async def handle_update_care_team_member(args: dict) -> dict:
+    """Add or remove a member from a care team."""
+    care_team_id = args["care_team_id"]
+    action = args["action"]
+    member_display = args["member_display"]
+    role_code = args.get("role_code")
+    role_display = args.get("role_display")
+
+    try:
+        current = await fhir_client.read("CareTeam", care_team_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"CareTeam {care_team_id} not found"}
+        raise
+
+    participants = current.get("participant", [])
+
+    if action == "add":
+        new_participant = {
+            "member": {
+                "display": member_display,
+            },
+        }
+        if role_code or role_display:
+            role_coding = {
+                "system": "http://snomed.info/sct",
+            }
+            if role_code:
+                role_coding["code"] = role_code
+            if role_display:
+                role_coding["display"] = role_display
+            new_participant["role"] = [{
+                "coding": [role_coding],
+            }]
+        participants.append(new_participant)
+    elif action == "remove":
+        participants = [
+            p for p in participants
+            if p.get("member", {}).get("display") != member_display
+        ]
+
+    current["participant"] = participants
+    await fhir_client.update("CareTeam", care_team_id, current)
+
+    return {
+        "care_team_id": care_team_id,
+        "action": action,
+        "member": member_display,
+        "participant_count": len(participants),
+        "message": f"Member '{member_display}' {'added to' if action == 'add' else 'removed from'} care team.",
+    }
+
+
+# =============================================================================
+# Goals
+# =============================================================================
+
+
+async def handle_create_goal(args: dict) -> dict:
+    """Create a clinical goal for a patient."""
+    patient_id = args["patient_id"]
+    description = args["description"]
+    encounter_id = args.get("encounter_id")
+    lifecycle_status = args.get("lifecycle_status", "active")
+    achievement_status = args.get("achievement_status", "in-progress")
+    target_measure_code = args.get("target_measure_code")
+    target_measure_display = args.get("target_measure_display")
+    target_value = args.get("target_value")
+    target_unit = args.get("target_unit")
+    start_date = args.get("start_date")
+    category = args.get("category")
+
+    goal = {
+        "resourceType": "Goal",
+        "lifecycleStatus": lifecycle_status,
+        "achievementStatus": {
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/goal-achievement",
+                "code": achievement_status,
+                "display": achievement_status.replace("-", " ").title(),
+            }],
+        },
+        "description": {
+            "text": description,
+        },
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+    }
+
+    if encounter_id:
+        goal["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if start_date:
+        goal["startDate"] = start_date
+
+    if category:
+        goal["category"] = [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/goal-category",
+                "code": category,
+                "display": category.capitalize(),
+            }],
+        }]
+
+    if target_measure_code or target_measure_display:
+        target = {
+            "measure": {
+                "coding": [{
+                    "system": "http://loinc.org",
+                }],
+            },
+        }
+        if target_measure_code:
+            target["measure"]["coding"][0]["code"] = target_measure_code
+        if target_measure_display:
+            target["measure"]["coding"][0]["display"] = target_measure_display
+
+        if target_value is not None and target_unit:
+            target["detailQuantity"] = {
+                "value": target_value,
+                "unit": target_unit,
+                "system": "http://unitsofmeasure.org",
+            }
+
+        goal["target"] = [target]
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.GOAL,
+        patient_id=patient_id,
+        resource=goal,
+        fhir_id=None,
+        summary=f"Goal: {description[:80]}",
+        metadata={"requester": "agent"},
+    )
+
+    return {
+        "goal_id": None,
+        "description": description,
+        "lifecycle_status": lifecycle_status,
+        "action_id": action.action_id,
+        "message": "Goal queued for approval.",
+    }
+
+
+async def handle_get_patient_goals(args: dict) -> dict:
+    """Get goals for a patient."""
+    patient_id = args["patient_id"]
+    lifecycle_status = args.get("lifecycle_status")
+    encounter_id = args.get("encounter_id")
+
+    params = {"patient": patient_id}
+    if lifecycle_status:
+        params["lifecycle-status"] = lifecycle_status
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("Goal", params)
+
+    goals = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        targets = []
+        for t in resource.get("target", []):
+            measure = extract_code_display(t.get("measure"))
+            detail = t.get("detailQuantity", {})
+            targets.append({
+                "measure": measure,
+                "value": detail.get("value"),
+                "unit": detail.get("unit"),
+            })
+
+        goals.append({
+            "id": resource.get("id"),
+            "lifecycle_status": resource.get("lifecycleStatus"),
+            "achievement_status": extract_code_display(resource.get("achievementStatus")),
+            "description": resource.get("description", {}).get("text"),
+            "targets": targets,
+        })
+
+    return {
+        "total": bundle.get("total", len(goals)),
+        "goals": goals,
+    }
+
+
+async def handle_update_goal_status(args: dict) -> dict:
+    """Update the lifecycle status of a goal."""
+    goal_id = args["goal_id"]
+    lifecycle_status = args["lifecycle_status"]
+    achievement_status = args.get("achievement_status")
+
+    try:
+        current = await fhir_client.read("Goal", goal_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"error": f"Goal {goal_id} not found"}
+        raise
+
+    old_lifecycle_status = current.get("lifecycleStatus", "unknown")
+    current["lifecycleStatus"] = lifecycle_status
+
+    if lifecycle_status == "completed" and not achievement_status:
+        achievement_status = "achieved"
+
+    if achievement_status:
+        current["achievementStatus"] = {
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/goal-achievement",
+                "code": achievement_status,
+                "display": achievement_status.replace("-", " ").title(),
+            }],
+        }
+
+    await fhir_client.update("Goal", goal_id, current)
+
+    final_achievement = achievement_status or extract_code_display(current.get("achievementStatus"))
+
+    return {
+        "goal_id": goal_id,
+        "old_lifecycle_status": old_lifecycle_status,
+        "new_lifecycle_status": lifecycle_status,
+        "achievement_status": final_achievement,
+        "message": f"Goal status changed from '{old_lifecycle_status}' to '{lifecycle_status}'",
+    }
+
+
+# =============================================================================
+# Device Metrics
+# =============================================================================
+
+
+async def handle_record_device_metric(args: dict) -> dict:
+    """Record a device metric."""
+    type_code = args["type_code"]
+    type_display = args["type_display"]
+    source_display = args.get("source_display")
+    category = args.get("category", "measurement")
+    operational_status = args.get("operational_status", "on")
+
+    device_metric = {
+        "resourceType": "DeviceMetric",
+        "type": {
+            "coding": [{
+                "system": "urn:iso:std:iso:11073:10101",
+                "code": type_code,
+                "display": type_display,
+            }],
+        },
+        "category": category,
+        "operationalStatus": operational_status,
+    }
+
+    if source_display:
+        device_metric["source"] = {
+            "display": source_display,
+        }
+
+    result = await fhir_client.create("DeviceMetric", device_metric)
+    fhir_id = result.get("id")
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.DEVICE_METRIC,
+        patient_id="device-registry",
+        resource=device_metric,
+        fhir_id=fhir_id,
+        summary=f"Device metric: {type_display} ({category})",
+        metadata={"requester": "agent", "source": source_display or "unknown"},
+    )
+
+    return {
+        "device_metric_id": fhir_id,
+        "type": type_display,
+        "source": source_display,
+        "category": category,
+        "message": f"Device metric recorded: {type_display}",
+    }
+
+
+async def handle_get_device_metrics(args: dict) -> dict:
+    """Get device metrics with optional filtering."""
+    type_code = args.get("type_code")
+    category = args.get("category")
+    source = args.get("source")
+
+    params = {}
+    if type_code:
+        params["type"] = type_code
+    if category:
+        params["category"] = category
+    if source:
+        params["source"] = source
+
+    bundle = await fhir_client.search("DeviceMetric", params)
+
+    metrics = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        metrics.append({
+            "id": resource.get("id"),
+            "type": extract_code_display(resource.get("type")),
+            "source": resource.get("source", {}).get("display"),
+            "category": resource.get("category"),
+            "operational_status": resource.get("operationalStatus"),
+        })
+
+    return {
+        "total": bundle.get("total", len(metrics)),
+        "metrics": metrics,
+    }
+
+
+# =============================================================================
+# Adverse Events
+# =============================================================================
+
+
+async def handle_report_adverse_event(args: dict) -> dict:
+    """Report an adverse event for a patient."""
+    patient_id = args["patient_id"]
+    event_description = args["event_description"]
+    encounter_id = args.get("encounter_id")
+    actuality = args.get("actuality", "actual")
+    category_code = args.get("category_code")
+    seriousness = args.get("seriousness")
+    severity = args.get("severity")
+    date = args.get("date", datetime.now(timezone.utc).isoformat())
+
+    adverse_event = {
+        "resourceType": "AdverseEvent",
+        "actuality": actuality,
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "date": date,
+        "event": {
+            "text": event_description,
+        },
+    }
+
+    if encounter_id:
+        adverse_event["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if category_code:
+        adverse_event["category"] = [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/adverse-event-category",
+                "code": category_code,
+                "display": category_code.replace("-", " ").title(),
+            }],
+        }]
+
+    if seriousness:
+        adverse_event["seriousness"] = {
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/adverse-event-seriousness",
+                "code": seriousness,
+                "display": seriousness.capitalize(),
+            }],
+        }
+
+    if severity:
+        adverse_event["severity"] = {
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/adverse-event-severity",
+                "code": severity,
+                "display": severity.capitalize(),
+            }],
+        }
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.ADVERSE_EVENT,
+        patient_id=patient_id,
+        resource=adverse_event,
+        fhir_id=None,
+        summary=f"Adverse event ({actuality}): {event_description[:80]}",
+        metadata={"requester": "agent", "seriousness": seriousness or "unknown"},
+    )
+
+    return {
+        "adverse_event_id": None,
+        "event_description": event_description,
+        "actuality": actuality,
+        "seriousness": seriousness,
+        "action_id": action.action_id,
+        "message": "Adverse event queued for approval.",
+    }
+
+
+async def handle_get_adverse_events(args: dict) -> dict:
+    """Get adverse events for a patient."""
+    patient_id = args["patient_id"]
+    encounter_id = args.get("encounter_id")
+    actuality = args.get("actuality")
+    seriousness = args.get("seriousness")
+    date = args.get("date")
+
+    params = {"subject": patient_id}
+    if encounter_id:
+        params["encounter"] = encounter_id
+    if actuality:
+        params["actuality"] = actuality
+    if seriousness:
+        params["seriousness"] = seriousness
+    if date:
+        params["date"] = date
+
+    bundle = await fhir_client.search("AdverseEvent", params)
+
+    events = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        category_list = resource.get("category", [])
+        category = extract_code_display(category_list[0]) if category_list else None
+
+        events.append({
+            "id": resource.get("id"),
+            "actuality": resource.get("actuality"),
+            "date": resource.get("date"),
+            "event": resource.get("event", {}).get("text"),
+            "category": category,
+            "seriousness": extract_code_display(resource.get("seriousness")),
+            "severity": extract_code_display(resource.get("severity")),
+        })
+
+    return {
+        "total": bundle.get("total", len(events)),
+        "adverse_events": events,
+    }
+
+
+# =============================================================================
+# Inpatient Communication
+# =============================================================================
+
+
+async def handle_create_inpatient_communication(args: dict) -> dict:
+    """Create an inpatient communication (handoff note, consult request, etc.)."""
+    patient_id = args["patient_id"]
+    content = args["content"]
+    encounter_id = args.get("encounter_id")
+    category = args.get("category", "handoff")
+    sender = args.get("sender")
+    recipient = args.get("recipient")
+    priority = args.get("priority", "routine")
+    topic = args.get("topic")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    communication = {
+        "resourceType": "Communication",
+        "status": "completed",
+        "category": [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/communication-category",
+                "code": category,
+                "display": category.replace("_", " ").title(),
+            }],
+        }],
+        "subject": {
+            "reference": f"Patient/{patient_id}",
+        },
+        "sent": now_iso,
+        "payload": [{
+            "contentString": content,
+        }],
+        "priority": priority,
+    }
+
+    if encounter_id:
+        communication["encounter"] = {
+            "reference": f"Encounter/{encounter_id}",
+        }
+
+    if sender:
+        communication["sender"] = {
+            "display": sender,
+        }
+
+    if recipient:
+        communication["recipient"] = [{
+            "display": recipient,
+        }]
+
+    if topic:
+        communication["topic"] = {
+            "text": topic,
+        }
+
+    queue = get_approval_queue()
+    action = queue.queue_action(
+        action_type=ActionType.COMMUNICATION,
+        patient_id=patient_id,
+        resource=communication,
+        fhir_id=None,
+        summary=f"Communication ({category}): {content[:80]}",
+        metadata={"requester": sender or "agent", "priority": priority},
+    )
+
+    return {
+        "communication_id": None,
+        "category": category,
+        "content_preview": content[:100],
+        "action_id": action.action_id,
+        "message": "Communication queued for approval.",
+    }
+
+
+async def handle_get_communications(args: dict) -> dict:
+    """Get communications for an encounter."""
+    encounter_id = args["encounter_id"]
+    category = args.get("category")
+
+    params = {"encounter": encounter_id}
+    if category:
+        params["category"] = category
+
+    bundle = await fhir_client.search("Communication", params)
+
+    communications = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        payload_content = None
+        for payload in resource.get("payload", []):
+            if "contentString" in payload:
+                payload_content = payload["contentString"]
+                break
+
+        category_list = resource.get("category", [])
+        cat = extract_code_display(category_list[0]) if category_list else None
+
+        communications.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "category": cat,
+            "sent": resource.get("sent"),
+            "sender": resource.get("sender", {}).get("display"),
+            "content": payload_content,
+            "topic": resource.get("topic", {}).get("text"),
+        })
+
+    return {
+        "total": bundle.get("total", len(communications)),
+        "communications": communications,
+    }
+
+
+async def handle_search_communications(args: dict) -> dict:
+    """Search communications for a patient."""
+    patient_id = args["patient_id"]
+    category = args.get("category")
+    sender = args.get("sender")
+    date_from = args.get("date_from")
+    date_to = args.get("date_to")
+    encounter_id = args.get("encounter_id")
+
+    params = {"patient": patient_id}
+    if category:
+        params["category"] = category
+    if sender:
+        params["sender"] = sender
+    if date_from:
+        params["sent"] = f"ge{date_from}"
+    if date_to:
+        if "sent" in params:
+            params["sent"] = [params["sent"], f"le{date_to}"]
+        else:
+            params["sent"] = f"le{date_to}"
+    if encounter_id:
+        params["encounter"] = encounter_id
+
+    bundle = await fhir_client.search("Communication", params)
+
+    communications = []
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+
+        payload_content = None
+        for payload in resource.get("payload", []):
+            if "contentString" in payload:
+                payload_content = payload["contentString"]
+                break
+
+        category_list = resource.get("category", [])
+        cat = extract_code_display(category_list[0]) if category_list else None
+
+        communications.append({
+            "id": resource.get("id"),
+            "status": resource.get("status"),
+            "category": cat,
+            "sent": resource.get("sent"),
+            "sender": resource.get("sender", {}).get("display"),
+            "content": payload_content,
+            "topic": resource.get("topic", {}).get("text"),
+        })
+
+    return {
+        "total": bundle.get("total", len(communications)),
+        "communications": communications,
     }
 
 

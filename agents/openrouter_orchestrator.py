@@ -832,6 +832,212 @@ FHIR_TOOLS = [
             "required": ["task_id", "status"],
         },
     },
+
+    # Phase 1: Care Team
+    {
+        "name": "create_care_team",
+        "description": "Create a care team for a patient. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "name": {"type": "string", "description": "Care team name (e.g., 'ICU Care Team - Patient Smith')"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "status": {"type": "string", "enum": ["proposed", "active", "suspended", "inactive", "entered-in-error"], "description": "Care team status (default: active)"},
+                "participants": {"type": "array", "items": {"type": "object", "properties": {"role_code": {"type": "string"}, "role_display": {"type": "string"}, "member_display": {"type": "string"}}}, "description": "List of team participants"},
+            },
+            "required": ["patient_id", "name"],
+        },
+    },
+    {
+        "name": "get_care_team",
+        "description": "Get care teams for a patient, optionally filtered by encounter and status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+                "status": {"type": "string", "description": "Filter by status (default: active)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "update_care_team_member",
+        "description": "Add or remove a member from a care team.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "care_team_id": {"type": "string", "description": "FHIR CareTeam ID"},
+                "action": {"type": "string", "enum": ["add", "remove"], "description": "Action to perform: add or remove member"},
+                "member_display": {"type": "string", "description": "Member display name"},
+                "role_code": {"type": "string", "description": "SNOMED role code (optional, for add)"},
+                "role_display": {"type": "string", "description": "Role display text (optional, for add)"},
+            },
+            "required": ["care_team_id", "action", "member_display"],
+        },
+    },
+
+    # Phase 1: Goals
+    {
+        "name": "create_goal",
+        "description": "Create a clinical goal for a patient. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "description": {"type": "string", "description": "Goal description (e.g., 'MAP > 65 mmHg without vasopressors')"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "lifecycle_status": {"type": "string", "enum": ["proposed", "planned", "accepted", "active", "on-hold", "completed", "cancelled", "entered-in-error", "rejected"], "description": "Goal lifecycle status (default: active)"},
+                "achievement_status": {"type": "string", "enum": ["in-progress", "improving", "worsening", "no-change", "achieved", "sustaining", "not-achieved", "no-progress", "not-attainable"], "description": "Goal achievement status (default: in-progress)"},
+                "target_measure_code": {"type": "string", "description": "LOINC code for target measure"},
+                "target_measure_display": {"type": "string", "description": "Target measure display text"},
+                "target_value": {"type": "number", "description": "Target value (numeric)"},
+                "target_unit": {"type": "string", "description": "Target value unit"},
+                "start_date": {"type": "string", "description": "Goal start date (ISO date)"},
+                "category": {"type": "string", "description": "Goal category (e.g., 'clinical')"},
+            },
+            "required": ["patient_id", "description"],
+        },
+    },
+    {
+        "name": "get_patient_goals",
+        "description": "Get goals for a patient, optionally filtered by lifecycle status and encounter.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "lifecycle_status": {"type": "string", "description": "Filter by lifecycle status (optional)"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+    {
+        "name": "update_goal_status",
+        "description": "Update the lifecycle status of a goal. Auto-sets achievement to 'achieved' on completion.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "string", "description": "FHIR Goal ID"},
+                "lifecycle_status": {"type": "string", "enum": ["proposed", "planned", "accepted", "active", "on-hold", "completed", "cancelled", "entered-in-error", "rejected"], "description": "New lifecycle status"},
+                "achievement_status": {"type": "string", "enum": ["in-progress", "improving", "worsening", "no-change", "achieved", "sustaining", "not-achieved", "no-progress", "not-attainable"], "description": "Override achievement status (optional)"},
+            },
+            "required": ["goal_id", "lifecycle_status"],
+        },
+    },
+
+    # Phase 1: Device Metrics
+    {
+        "name": "record_device_metric",
+        "description": "Record a device metric (e.g., SpO2 monitor, ventilator settings). Not patient-scoped.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type_code": {"type": "string", "description": "ISO 11073 device metric code (e.g., '150456')"},
+                "type_display": {"type": "string", "description": "Device metric display name (e.g., 'SpO2')"},
+                "source_display": {"type": "string", "description": "Source device name (optional)"},
+                "category": {"type": "string", "enum": ["measurement", "setting", "calculation", "unspecified"], "description": "Metric category (default: measurement)"},
+                "operational_status": {"type": "string", "enum": ["on", "off", "standby", "entered-in-error"], "description": "Operational status (default: on)"},
+            },
+            "required": ["type_code", "type_display"],
+        },
+    },
+    {
+        "name": "get_device_metrics",
+        "description": "Get device metrics with optional type, category, and source filters.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type_code": {"type": "string", "description": "Filter by ISO 11073 type code (optional)"},
+                "category": {"type": "string", "description": "Filter by category (optional)"},
+                "source": {"type": "string", "description": "Filter by source (optional)"},
+            },
+        },
+    },
+
+    # Phase 1: Adverse Events
+    {
+        "name": "report_adverse_event",
+        "description": "Report an adverse event for a patient. Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "event_description": {"type": "string", "description": "Description of the adverse event"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "actuality": {"type": "string", "enum": ["actual", "potential"], "description": "Event actuality (default: actual)"},
+                "category_code": {"type": "string", "description": "Category code (e.g., 'medication-mishap')"},
+                "seriousness": {"type": "string", "enum": ["serious", "non-serious"], "description": "Event seriousness"},
+                "severity": {"type": "string", "enum": ["mild", "moderate", "severe"], "description": "Event severity"},
+                "date": {"type": "string", "description": "Event date (ISO datetime, default: now)"},
+            },
+            "required": ["patient_id", "event_description"],
+        },
+    },
+    {
+        "name": "get_adverse_events",
+        "description": "Get adverse events for a patient with optional filters.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+                "actuality": {"type": "string", "description": "Filter by actuality (optional)"},
+                "seriousness": {"type": "string", "description": "Filter by seriousness (optional)"},
+                "date": {"type": "string", "description": "Filter by date (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
+
+    # Phase 1: Inpatient Communication
+    {
+        "name": "create_inpatient_communication",
+        "description": "Create an inpatient communication (handoff note, consult request, nursing note). Routes through approval queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "content": {"type": "string", "description": "Communication message content"},
+                "encounter_id": {"type": "string", "description": "Associated encounter ID (optional)"},
+                "category": {"type": "string", "enum": ["handoff", "consult_request", "nursing_note", "interdisciplinary_note"], "description": "Communication category (default: handoff)"},
+                "sender": {"type": "string", "description": "Sender display name (optional)"},
+                "recipient": {"type": "string", "description": "Recipient display name (optional)"},
+                "priority": {"type": "string", "enum": ["routine", "urgent", "asap", "stat"], "description": "Communication priority (default: routine)"},
+                "topic": {"type": "string", "description": "Communication topic text (optional)"},
+            },
+            "required": ["patient_id", "content"],
+        },
+    },
+    {
+        "name": "get_communications",
+        "description": "Get communications for an encounter, optionally filtered by category.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "encounter_id": {"type": "string", "description": "FHIR Encounter ID"},
+                "category": {"type": "string", "description": "Filter by category (optional)"},
+            },
+            "required": ["encounter_id"],
+        },
+    },
+    {
+        "name": "search_communications",
+        "description": "Search communications for a patient with optional filters.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "string", "description": "FHIR Patient ID"},
+                "category": {"type": "string", "description": "Filter by category (optional)"},
+                "sender": {"type": "string", "description": "Filter by sender (optional)"},
+                "date_from": {"type": "string", "description": "Start date filter (ISO date, optional)"},
+                "date_to": {"type": "string", "description": "End date filter (ISO date, optional)"},
+                "encounter_id": {"type": "string", "description": "Filter by encounter ID (optional)"},
+            },
+            "required": ["patient_id"],
+        },
+    },
 ]
 
 
@@ -972,6 +1178,20 @@ class OpenRouterOrchestrator:
                 handle_complete_task,
                 handle_get_pending_tasks,
                 handle_update_task_status,
+                # Phase 1: CareTeam + Goal + DeviceMetric + AdverseEvent + Communication
+                handle_create_care_team,
+                handle_get_care_team,
+                handle_update_care_team_member,
+                handle_create_goal,
+                handle_get_patient_goals,
+                handle_update_goal_status,
+                handle_record_device_metric,
+                handle_get_device_metrics,
+                handle_report_adverse_event,
+                handle_get_adverse_events,
+                handle_create_inpatient_communication,
+                handle_get_communications,
+                handle_search_communications,
             )
 
             self.handlers = {
@@ -1033,6 +1253,20 @@ class OpenRouterOrchestrator:
                 "complete_task": handle_complete_task,
                 "get_pending_tasks": handle_get_pending_tasks,
                 "update_task_status": handle_update_task_status,
+                # Phase 1: CareTeam + Goal + DeviceMetric + AdverseEvent + Communication
+                "create_care_team": handle_create_care_team,
+                "get_care_team": handle_get_care_team,
+                "update_care_team_member": handle_update_care_team_member,
+                "create_goal": handle_create_goal,
+                "get_patient_goals": handle_get_patient_goals,
+                "update_goal_status": handle_update_goal_status,
+                "record_device_metric": handle_record_device_metric,
+                "get_device_metrics": handle_get_device_metrics,
+                "report_adverse_event": handle_report_adverse_event,
+                "get_adverse_events": handle_get_adverse_events,
+                "create_inpatient_communication": handle_create_inpatient_communication,
+                "get_communications": handle_get_communications,
+                "search_communications": handle_search_communications,
             }
             logger.info("Tool handlers imported successfully")
 
