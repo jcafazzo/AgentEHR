@@ -4,13 +4,13 @@
 
 ## Current Phase: 1 — FHIR Inpatient Resource Expansion
 
-## Current Plan: 2 of 4
+## Current Plan: 3 of 4
 
 ## Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (1/4 plans complete) |
+| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (2/4 plans complete) |
 | 2 | Inpatient Seed Data | Planned |
 | 3 | Supervisor Agent | Planned |
 | 4 | Command Center Dashboard | Planned |
@@ -33,19 +33,23 @@
 - Write handlers (create encounter, create flag) route through approval queue; status updates bypass it
 - Timeline handler uses asyncio.gather with return_exceptions=True for graceful degradation
 - Flag priority uses FHIR extension with flag-priority-code system (PN/PL/PM/PH)
+- Create handlers (clinical impression, risk assessment, task) route through approval queue; read-modify-write task mutations bypass it
+- Task search uses patient= param with comma-separated status filter for pending task queries
+- RiskAssessment uses http://terminology.hl7.org/CodeSystem/risk-probability for qualitative risk coding
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01 | 01 | 6min | 2 | 4 |
+| 01 | 02 | 5min | 2 | 3 |
 
 ## Blockers
 None.
 
 ## Last Session
-- **Stopped at:** Completed 01-01-PLAN.md
-- **Updated:** 2026-02-25T20:49:19Z
+- **Stopped at:** Completed 01-02-PLAN.md
+- **Updated:** 2026-02-25T20:59:00Z
 
 ---
-*Updated: 2026-02-25*
+*Updated: 2026-02-25T20:59:00Z*
