@@ -188,7 +188,7 @@
 | FR-11: Clinical Trials Agent | 9 | Planned |
 | FR-12: Agent Visualization | 8 | Planned |
 | FR-13: Test Assertions & Reporting | 10 | Planned |
-| FR-14: Inpatient Seed Data | 2 | Planned |
+| FR-14: Inpatient Seed Data | 2 | Complete |
 | FR-15: Real-Time Streaming | 10 | Planned |
 | FR-16: Sepsis Detection Pathway | 6 | Planned |
 | FR-17: CMS Core Measures | 11 | Planned |

@@ -2,17 +2,17 @@
 
 ## Current Milestone: 1 — Inpatient Care Oversight Platform
 
-## Current Phase: 2 — Inpatient Seed Data
+## Current Phase: 3 — Supervisor Agent
 
-## Current Plan: 2 of 2
+## Current Plan: 1 of 3
 
 ## Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | FHIR Inpatient Resource Expansion | **COMPLETE** (4/4 plans) |
-| 2 | Inpatient Seed Data | **IN PROGRESS** (1/2 plans) |
-| 3 | Supervisor Agent | Planned |
+| 2 | Inpatient Seed Data | **COMPLETE** (2/2 plans) |
+| 3 | Supervisor Agent | **IN PROGRESS** (0/3 plans) |
 | 4 | Command Center Dashboard | Planned |
 | 5 | Knowledge Base & RAG | Planned |
 | 6 | Specialist Sub-Agents | Planned |
@@ -44,6 +44,8 @@
 - Extended existing make_* helpers with optional encounter_id rather than creating new inpatient-specific helpers -- backward compatible
 - Used static admit timestamps for inpatient scenarios (deterministic reproducibility)
 - Client-side filtering for encounter idempotency (Medplum may not support reason-code:text search)
+- Added admit_dt parameter to all 5 scenario creators for timestamp coordination with encounter_builder
+- Lambda default argument capture used in INPATIENT_PROFILES to avoid Python late-binding closure issues
 
 ## Performance Metrics
 
@@ -54,13 +56,14 @@
 | 01 | 03 | 9min | 2 | 3 |
 | 01 | 04 | 5min | 1 | 1 |
 | 02 | 01 | 11min | 2 | 1 |
+| 02 | 02 | 6min | 2 | 1 |
 
 ## Blockers
 None.
 
 ## Last Session
-- **Stopped at:** Completed 02-01-PLAN.md
-- **Updated:** 2026-02-26T01:59:22Z
+- **Stopped at:** Completed 02-02-PLAN.md (Phase 2 complete)
+- **Updated:** 2026-02-26T02:16:18Z
 
 ---
-*Updated: 2026-02-26T01:59:22Z*
+*Updated: 2026-02-26T02:16:18Z*
