@@ -36,6 +36,11 @@
 
 **Requirements**: FR-02, FR-04, FR-05, NFR-01, NFR-03, NFR-04, NFR-05
 
+**Plans:** 3 plans
+- [ ] 03-01-PLAN.md — PatientState data models + supervisor system prompt
+- [ ] 03-02-PLAN.md — SupervisorAgent evaluation cycle (FHIR fetching, scoring, alerting, LLM reasoning)
+- [ ] 03-03-PLAN.md — SupervisorManager lifecycle + API endpoints
+
 **Success criteria**:
 - [ ] Supervisor agent loads patient state from FHIR (encounter, conditions, vitals, meds, labs)
 - [ ] Recalculates NEWS2, qSOFA on each evaluation cycle
