@@ -15,8 +15,9 @@ Uses proper FHIR R4 with SNOMED CT, LOINC, RxNorm, CVX codes.
 
 import asyncio
 import base64
+import random
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # Add FHIR MCP server source to path
@@ -24,6 +25,8 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "fhir-mcp-server" / "src"))
 
 from handlers import fhir_client
+
+random.seed(42)  # Deterministic noise for reproducible vital sign data
 
 
 # =============================================================================
@@ -52,7 +55,8 @@ def make_patient(given: str, family: str, gender: str, birth_date: str,
 
 def make_condition(patient_id: str, code: str, display: str,
                    onset: str, status: str = "active",
-                   icd10_code: str = None, icd10_display: str = None) -> dict:
+                   icd10_code: str = None, icd10_display: str = None,
+                   encounter_id: str = None) -> dict:
     coding = [{"system": "http://snomed.info/sct", "code": code, "display": display}]
     if icd10_code:
         coding.append({"system": "http://hl7.org/fhir/sid/icd-10-cm", "code": icd10_code, "display": icd10_display or display})
@@ -71,12 +75,15 @@ def make_condition(patient_id: str, code: str, display: str,
         "subject": {"reference": f"Patient/{patient_id}"},
         "onsetDateTime": onset,
     }
+    if encounter_id:
+        resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
     return resource
 
 
 def make_medication(patient_id: str, rxnorm_code: str, display: str,
                     dosage_text: str, frequency: str = None,
-                    status: str = "active") -> dict:
+                    status: str = "active",
+                    encounter_id: str = None, authored_on: str = None) -> dict:
     timing = {}
     if frequency:
         freq_map = {
@@ -99,7 +106,7 @@ def make_medication(patient_id: str, rxnorm_code: str, display: str,
             "text": display,
         },
         "subject": {"reference": f"Patient/{patient_id}"},
-        "authoredOn": str(date.today()),
+        "authoredOn": authored_on if authored_on else str(date.today()),
         "dosageInstruction": [
             {
                 "text": dosage_text,
@@ -112,6 +119,8 @@ def make_medication(patient_id: str, rxnorm_code: str, display: str,
         {k: v for k, v in d.items() if v is not None}
         for d in resource["dosageInstruction"]
     ]
+    if encounter_id:
+        resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
     return resource
 
 
@@ -148,7 +157,8 @@ def make_observation(patient_id: str, loinc_code: str, display: str,
                      value: float, unit: str, date_str: str,
                      category_code: str = "laboratory",
                      ref_low: float = None, ref_high: float = None,
-                     value_string: str = None) -> dict:
+                     value_string: str = None,
+                     encounter_id: str = None) -> dict:
     resource = {
         "resourceType": "Observation",
         "status": "final",
@@ -178,12 +188,15 @@ def make_observation(patient_id: str, loinc_code: str, display: str,
         if ref_high is not None:
             ref_range["high"] = {"value": ref_high, "unit": unit}
         resource["referenceRange"] = [ref_range]
+    if encounter_id:
+        resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
     return resource
 
 
 def make_vital(patient_id: str, loinc_code: str, display: str,
                value: float, unit: str, date_str: str,
-               component: list = None) -> dict:
+               component: list = None,
+               encounter_id: str = None) -> dict:
     resource = {
         "resourceType": "Observation",
         "status": "final",
@@ -206,10 +219,13 @@ def make_vital(patient_id: str, loinc_code: str, display: str,
             "system": "http://unitsofmeasure.org",
             "code": unit,
         }
+    if encounter_id:
+        resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
     return resource
 
 
-def make_bp(patient_id: str, systolic: int, diastolic: int, date_str: str) -> dict:
+def make_bp(patient_id: str, systolic: int, diastolic: int, date_str: str,
+            encounter_id: str = None) -> dict:
     return make_vital(
         patient_id, "85354-9", "Blood Pressure", None, "mmHg", date_str,
         component=[
@@ -222,6 +238,7 @@ def make_bp(patient_id: str, systolic: int, diastolic: int, date_str: str) -> di
                 "valueQuantity": {"value": diastolic, "unit": "mmHg", "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
             },
         ],
+        encounter_id=encounter_id,
     )
 
 
@@ -295,6 +312,229 @@ def make_document(patient_id: str, title: str, content_text: str,
             }
         }],
     }
+
+
+# =============================================================================
+# Inpatient Helper Functions
+# =============================================================================
+
+def make_inpatient_encounter(patient_id: str, reason: str, location: str,
+                              priority: str = "EM", admit_dt: datetime = None,
+                              admit_source: str = "emd") -> dict:
+    """Create an inpatient encounter resource (class=IMP)."""
+    if admit_dt is None:
+        admit_dt = datetime.now(timezone.utc)
+    dt_str = admit_dt.isoformat()
+
+    return {
+        "resourceType": "Encounter",
+        "status": "in-progress",
+        "class": {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            "code": "IMP",
+            "display": "inpatient encounter",
+        },
+        "subject": {"reference": f"Patient/{patient_id}"},
+        "period": {"start": dt_str},
+        "reasonCode": [{"text": reason}],
+        "hospitalization": {
+            "admitSource": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/admit-source",
+                    "code": admit_source,
+                }]
+            }
+        },
+        "location": [{
+            "location": {"display": location},
+            "status": "active",
+            "period": {"start": dt_str},
+        }],
+        "priority": {
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ActPriority",
+                "code": priority,
+            }]
+        },
+    }
+
+
+def make_care_team(patient_id: str, encounter_id: str, name: str,
+                    participants: list[tuple[str, str, str]]) -> dict:
+    """Create a CareTeam resource.
+
+    participants: [(member_name, snomed_code, role_display), ...]
+    """
+    return {
+        "resourceType": "CareTeam",
+        "status": "active",
+        "name": name,
+        "subject": {"reference": f"Patient/{patient_id}"},
+        "encounter": {"reference": f"Encounter/{encounter_id}"},
+        "participant": [
+            {
+                "role": [{"coding": [{"system": "http://snomed.info/sct", "code": code, "display": display}]}],
+                "member": {"display": member_name},
+            }
+            for member_name, code, display in participants
+        ],
+    }
+
+
+def generate_vital_series(
+    patient_id: str,
+    encounter_id: str,
+    start_dt: datetime,
+    hours: int,
+    base_vitals: dict,
+    progression: list[dict],
+    interval_minutes: int = 60,
+) -> list[tuple[str, dict]]:
+    """Generate hourly vital signs with clinical progression.
+
+    base_vitals: {"hr": 88, "sbp": 120, "dbp": 78, "rr": 18, "temp": 37.0, "spo2": 97}
+    progression: [{"hour": N, "deltas": {"param": val}}, ...]
+
+    Returns list of (resource_type, resource_dict) tuples.
+    """
+    resources = []
+    current = dict(base_vitals)
+
+    # Physiological clamp bounds
+    clamps = {
+        "hr": (30, 200),
+        "sbp": (50, 250),
+        "dbp": (30, 150),
+        "rr": (4, 60),
+        "temp": (33, 42),
+        "spo2": (50, 100),
+    }
+
+    for minute in range(0, hours * 60, interval_minutes):
+        dt = start_dt + timedelta(minutes=minute)
+        hour = minute / 60
+
+        # Apply progression changes
+        for prog in progression:
+            if abs(hour - prog["hour"]) < 0.5:
+                for param, delta in prog["deltas"].items():
+                    current[param] = current.get(param, 0) + delta
+
+        # Clamp to physiological bounds
+        for param, (lo, hi) in clamps.items():
+            if param in current:
+                current[param] = max(lo, min(hi, current[param]))
+
+        dt_str = dt.isoformat()
+
+        # Heart rate
+        hr_val = round(max(clamps["hr"][0], min(clamps["hr"][1], current["hr"] + random.uniform(-2, 2))), 1)
+        resources.append(("Observation", make_vital(
+            patient_id, "8867-4", "Heart Rate",
+            hr_val, "/min", dt_str,
+            encounter_id=encounter_id,
+        )))
+
+        # Blood pressure
+        sbp_val = int(max(clamps["sbp"][0], min(clamps["sbp"][1], current["sbp"] + random.uniform(-3, 3))))
+        dbp_val = int(max(clamps["dbp"][0], min(clamps["dbp"][1], current["dbp"] + random.uniform(-2, 2))))
+        resources.append(("Observation", make_bp(
+            patient_id, sbp_val, dbp_val, dt_str,
+            encounter_id=encounter_id,
+        )))
+
+        # Respiratory rate
+        rr_val = round(max(clamps["rr"][0], min(clamps["rr"][1], current["rr"] + random.uniform(-1, 1))), 1)
+        resources.append(("Observation", make_vital(
+            patient_id, "9279-1", "Respiratory Rate",
+            rr_val, "/min", dt_str,
+            encounter_id=encounter_id,
+        )))
+
+        # Temperature
+        temp_val = round(max(clamps["temp"][0], min(clamps["temp"][1], current["temp"] + random.uniform(-0.1, 0.1))), 1)
+        resources.append(("Observation", make_vital(
+            patient_id, "8310-5", "Body Temperature",
+            temp_val, "Cel", dt_str,
+            encounter_id=encounter_id,
+        )))
+
+        # SpO2
+        spo2_val = round(max(clamps["spo2"][0], min(clamps["spo2"][1], current["spo2"] + random.uniform(-0.5, 0.5))), 1)
+        resources.append(("Observation", make_vital(
+            patient_id, "2708-6", "Oxygen Saturation",
+            spo2_val, "%", dt_str,
+            encounter_id=encounter_id,
+        )))
+
+    return resources
+
+
+async def find_or_create_inpatient_encounter(patient_id: str, encounter_resource: dict) -> str:
+    """Search for existing inpatient encounter, or create new one."""
+    reason_text = encounter_resource.get("reasonCode", [{}])[0].get("text", "")
+
+    # Search for existing inpatient encounters for this patient
+    result = await fhir_client.search("Encounter", {
+        "patient": patient_id,
+        "class": "IMP",
+    })
+    entries = result.get("entry", [])
+
+    # Filter client-side by matching reason text
+    if entries:
+        for entry in entries:
+            resource = entry["resource"]
+            existing_reason = ""
+            if resource.get("reasonCode"):
+                existing_reason = resource["reasonCode"][0].get("text", "")
+            if existing_reason == reason_text:
+                encounter_id = resource["id"]
+                print(f"  Found existing inpatient encounter (ID: {encounter_id})")
+                return encounter_id
+
+    # Create new encounter
+    result = await fhir_client.create("Encounter", encounter_resource)
+    encounter_id = result["id"]
+    print(f"  Created inpatient encounter (ID: {encounter_id})")
+    return encounter_id
+
+
+async def seed_inpatient_patient(profile: dict) -> dict:
+    """Seed an inpatient patient with encounter and linked resources."""
+    given = profile["given"]
+    family = profile["family"]
+
+    print(f"\n{'='*60}")
+    print(f"Seeding Inpatient: {given} {family}")
+    print(f"{'='*60}")
+
+    # 1. Find or create patient
+    patient_id = await find_or_create_patient(profile)
+
+    # 2. Create encounter FIRST (need encounter_id for linked resources)
+    encounter_resource = profile["encounter_builder"](patient_id)
+    encounter_id = await find_or_create_inpatient_encounter(patient_id, encounter_resource)
+
+    # 3. Generate linked resources with encounter_id
+    resources = await profile["scenario_creator"](patient_id, encounter_id)
+    print(f"  Generating {len(resources)} clinical resources...")
+
+    # 4. Create resources
+    created = 0
+    errors = 0
+    for resource_type, resource in resources:
+        try:
+            await fhir_client.create(resource_type, resource)
+            created += 1
+        except Exception as e:
+            errors += 1
+            if errors <= 3:
+                print(f"  ERROR creating {resource_type}: {e}")
+
+    print(f"  Created: {created}/{len(resources)} resources ({errors} errors)")
+    return {"patient_id": patient_id, "encounter_id": encounter_id,
+            "name": f"{given} {family}", "created": created, "errors": errors}
 
 
 # =============================================================================
