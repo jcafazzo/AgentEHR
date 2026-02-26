@@ -2,16 +2,16 @@
 
 ## Current Milestone: 1 — Inpatient Care Oversight Platform
 
-## Current Phase: 1 — FHIR Inpatient Resource Expansion
+## Current Phase: 2 — Inpatient Seed Data
 
-## Current Plan: 4 of 4
+## Current Plan: 2 of 2
 
 ## Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | FHIR Inpatient Resource Expansion | **IN PROGRESS** (3/4 plans complete) |
-| 2 | Inpatient Seed Data | Planned |
+| 1 | FHIR Inpatient Resource Expansion | **COMPLETE** (4/4 plans) |
+| 2 | Inpatient Seed Data | **IN PROGRESS** (1/2 plans) |
 | 3 | Supervisor Agent | Planned |
 | 4 | Command Center Dashboard | Planned |
 | 5 | Knowledge Base & RAG | Planned |
@@ -40,6 +40,10 @@
 - DeviceMetric uses placeholder patient_id 'device-registry' for approval queue (not patient-scoped)
 - Goal completion auto-sets achievementStatus to 'achieved' unless explicitly overridden
 - Communication search supports date range via FHIR ge/le prefix params
+- Integration test handles approval-queued resources gracefully (None IDs from task/goal/care-team create handlers)
+- Extended existing make_* helpers with optional encounter_id rather than creating new inpatient-specific helpers -- backward compatible
+- Used static admit timestamps for inpatient scenarios (deterministic reproducibility)
+- Client-side filtering for encounter idempotency (Medplum may not support reason-code:text search)
 
 ## Performance Metrics
 
@@ -48,13 +52,15 @@
 | 01 | 01 | 6min | 2 | 4 |
 | 01 | 02 | 5min | 2 | 3 |
 | 01 | 03 | 9min | 2 | 3 |
+| 01 | 04 | 5min | 1 | 1 |
+| 02 | 01 | 11min | 2 | 1 |
 
 ## Blockers
 None.
 
 ## Last Session
-- **Stopped at:** Completed 01-03-PLAN.md
-- **Updated:** 2026-02-25T21:13:35Z
+- **Stopped at:** Completed 02-01-PLAN.md
+- **Updated:** 2026-02-26T01:59:22Z
 
 ---
-*Updated: 2026-02-25T21:13:35Z*
+*Updated: 2026-02-26T01:59:22Z*
