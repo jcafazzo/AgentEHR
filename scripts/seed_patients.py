@@ -470,8 +470,11 @@ def generate_vital_series(
     return resources
 
 
-async def find_or_create_inpatient_encounter(patient_id: str, encounter_resource: dict) -> str:
-    """Search for existing inpatient encounter, or create new one."""
+async def find_or_create_inpatient_encounter(patient_id: str, encounter_resource: dict) -> tuple[str, bool]:
+    """Search for existing inpatient encounter, or create new one.
+
+    Returns (encounter_id, is_new) tuple.
+    """
     reason_text = encounter_resource.get("reasonCode", [{}])[0].get("text", "")
 
     # Search for existing inpatient encounters for this patient
@@ -491,13 +494,13 @@ async def find_or_create_inpatient_encounter(patient_id: str, encounter_resource
             if existing_reason == reason_text:
                 encounter_id = resource["id"]
                 print(f"  Found existing inpatient encounter (ID: {encounter_id})")
-                return encounter_id
+                return encounter_id, False
 
     # Create new encounter
     result = await fhir_client.create("Encounter", encounter_resource)
     encounter_id = result["id"]
     print(f"  Created inpatient encounter (ID: {encounter_id})")
-    return encounter_id
+    return encounter_id, True
 
 
 async def seed_inpatient_patient(profile: dict) -> dict:
@@ -514,14 +517,20 @@ async def seed_inpatient_patient(profile: dict) -> dict:
 
     # 2. Create encounter FIRST (need encounter_id for linked resources)
     encounter_resource = profile["encounter_builder"](patient_id)
-    encounter_id = await find_or_create_inpatient_encounter(patient_id, encounter_resource)
+    encounter_id, is_new = await find_or_create_inpatient_encounter(patient_id, encounter_resource)
 
-    # 3. Generate linked resources with encounter_id
+    # 3. Skip resource creation if encounter already exists (idempotent)
+    if not is_new:
+        print(f"  Encounter already seeded — skipping resource creation (idempotent)")
+        return {"patient_id": patient_id, "encounter_id": encounter_id,
+                "name": f"{given} {family}", "created": 0, "errors": 0}
+
+    # 4. Generate linked resources with encounter_id
     admit_dt = profile.get("admit_dt")
     resources = await profile["scenario_creator"](patient_id, encounter_id, admit_dt=admit_dt)
     print(f"  Generating {len(resources)} clinical resources...")
 
-    # 4. Create resources
+    # 5. Create resources
     created = 0
     errors = 0
     for resource_type, resource in resources:
