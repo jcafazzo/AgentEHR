@@ -538,6 +538,226 @@ async def seed_inpatient_patient(profile: dict) -> dict:
 
 
 # =============================================================================
+# Inpatient Scenario Creators
+# =============================================================================
+
+async def create_sepsis_scenario(patient_id: str, encounter_id: str) -> list[tuple[str, dict]]:
+    """
+    72yo female, UTI -> SIRS -> sepsis progression over 36 hours.
+    Timeline: ED presentation (hour 0), antibiotics (hour 1), ICU transfer (hour 4),
+    peak severity (hour 6-8), improvement starts (hour 12), step-down (hour 24).
+
+    Key scoring targets:
+    - qSOFA >= 2 at hour 4 (SBP <= 100, RR >= 22, altered mental status)
+    - NEWS2 >= 7 (HIGH risk) at hour 4-8
+    - SOFA change >= 2 from baseline at hour 4-8
+    """
+    resources = []
+    admit_dt = datetime(2026, 2, 24, 14, 0, tzinfo=timezone.utc)
+
+    # --- Conditions (all linked to encounter) ---
+    conditions = [
+        ("91302008", "Sepsis", admit_dt.isoformat(), "active", "A41.9", "Sepsis, unspecified organism"),
+        ("68566005", "Urinary tract infection", admit_dt.isoformat(), "active", "N39.0", "UTI, site not specified"),
+        ("386661006", "Fever", admit_dt.isoformat(), "active", "R50.9", "Fever, unspecified"),
+    ]
+    for code, display, onset, status, icd, icd_display in conditions:
+        resources.append(("Condition", make_condition(
+            patient_id, code, display, onset, status, icd, icd_display,
+            encounter_id=encounter_id)))
+
+    # --- Vital sign progression over 36 hours ---
+    base_vitals = {"hr": 102, "sbp": 110, "dbp": 65, "rr": 22, "temp": 38.8, "spo2": 94}
+    progression = [
+        # Deterioration hours 0-4
+        {"hour": 2, "deltas": {"hr": 10, "sbp": -12, "rr": 4, "temp": 0.5, "spo2": -3}},
+        {"hour": 4, "deltas": {"hr": 5, "sbp": -8, "rr": 2, "temp": 0.3, "spo2": -2}},
+        # Peak severity hours 4-8
+        {"hour": 6, "deltas": {"hr": 3, "sbp": -5, "rr": 1, "temp": 0.2, "spo2": -1}},
+        # Antibiotics taking effect hours 8-12
+        {"hour": 10, "deltas": {"hr": -5, "sbp": 5, "rr": -2, "temp": -0.3, "spo2": 1}},
+        {"hour": 12, "deltas": {"hr": -8, "sbp": 8, "rr": -3, "temp": -0.5, "spo2": 2}},
+        # Recovery hours 12-36
+        {"hour": 18, "deltas": {"hr": -10, "sbp": 10, "rr": -4, "temp": -0.5, "spo2": 3}},
+        {"hour": 24, "deltas": {"hr": -5, "sbp": 5, "rr": -2, "temp": -0.3, "spo2": 2}},
+        {"hour": 30, "deltas": {"hr": -3, "sbp": 3, "rr": -1, "temp": -0.2, "spo2": 1}},
+    ]
+    vitals = generate_vital_series(patient_id, encounter_id, admit_dt, 36, base_vitals, progression)
+    resources.extend(vitals)
+
+    # --- Labs ---
+    # Hour 0: Initial labs
+    h0 = admit_dt.isoformat()
+    resources.append(("Observation", make_observation(patient_id, "6690-2", "WBC", 18.5, "10*3/uL", h0, ref_low=4.5, ref_high=11.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 1.8, "mg/dL", h0, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "32693-4", "Lactate", 3.2, "mmol/L", h0, ref_high=2.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "777-3", "Platelets", 165, "10*3/uL", h0, ref_low=150, ref_high=400, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "1975-2", "Total Bilirubin", 1.2, "mg/dL", h0, ref_high=1.2, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "75241-0", "Procalcitonin", 8.5, "ng/mL", h0, ref_high=0.5, encounter_id=encounter_id)))
+
+    # Hour 4: Repeat labs showing deterioration
+    h4 = (admit_dt + timedelta(hours=4)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "6690-2", "WBC", 22.1, "10*3/uL", h4, ref_low=4.5, ref_high=11.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 2.4, "mg/dL", h4, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "32693-4", "Lactate", 4.8, "mmol/L", h4, ref_high=2.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "777-3", "Platelets", 130, "10*3/uL", h4, ref_low=150, ref_high=400, encounter_id=encounter_id)))
+
+    # Hour 12: Improvement
+    h12 = (admit_dt + timedelta(hours=12)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "6690-2", "WBC", 15.2, "10*3/uL", h12, ref_low=4.5, ref_high=11.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 1.9, "mg/dL", h12, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "32693-4", "Lactate", 2.1, "mmol/L", h12, ref_high=2.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "777-3", "Platelets", 155, "10*3/uL", h12, ref_low=150, ref_high=400, encounter_id=encounter_id)))
+
+    # Hour 24: Near-resolution
+    h24 = (admit_dt + timedelta(hours=24)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "6690-2", "WBC", 10.5, "10*3/uL", h24, ref_low=4.5, ref_high=11.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 1.4, "mg/dL", h24, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "32693-4", "Lactate", 1.5, "mmol/L", h24, ref_high=2.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "777-3", "Platelets", 175, "10*3/uL", h24, ref_low=150, ref_high=400, encounter_id=encounter_id)))
+
+    # --- Medications ---
+    h1 = (admit_dt + timedelta(hours=1)).isoformat()
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "82122", "Piperacillin-tazobactam",
+        "4.5g IV every 6 hours", None,
+        encounter_id=encounter_id, authored_on=h1)))
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "313002", "Normal Saline",
+        "30mL/kg IV bolus", None,
+        encounter_id=encounter_id, authored_on=h1)))
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "11124", "Vancomycin",
+        "25mg/kg IV loading dose", None,
+        encounter_id=encounter_id, authored_on=h1)))
+    h4_med = (admit_dt + timedelta(hours=4)).isoformat()
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "7512", "Norepinephrine",
+        "0.1mcg/kg/min titrate to MAP >65", None,
+        encounter_id=encounter_id, authored_on=h4_med)))
+
+    # --- CareTeam ---
+    resources.append(("CareTeam", make_care_team(
+        patient_id, encounter_id, "Sepsis Care Team",
+        [("Dr. Patel", "309343006", "Physician"),
+         ("RN Thompson", "224535009", "Registered nurse"),
+         ("PharmD Lee", "46255001", "Pharmacist")])))
+
+    return resources
+
+
+async def create_cardiac_scenario(patient_id: str, encounter_id: str) -> list[tuple[str, dict]]:
+    """
+    58yo male presenting with acute STEMI.
+    Timeline: Chest pain onset (hour 0), cath lab activation (hour 1),
+    PCI (hour 2), CCU admission (hour 3), stable post-PCI (hour 12-24).
+
+    Key scoring targets:
+    - NEWS2 MEDIUM->HIGH if cardiogenic shock develops
+    - Troponin series: rising to peak at hour 6, then declining
+    """
+    resources = []
+    admit_dt = datetime(2026, 2, 25, 2, 30, tzinfo=timezone.utc)
+
+    # --- Conditions (all linked to encounter) ---
+    conditions = [
+        ("401303003", "ST elevation myocardial infarction", admit_dt.isoformat(), "active", "I21.0", "Acute transmural MI of anterior wall"),
+        ("394659003", "Acute coronary syndrome", admit_dt.isoformat(), "active", "I24.9", "Acute ischemic heart disease, unspecified"),
+        ("89138009", "Cardiogenic shock", admit_dt.isoformat(), "active", "R57.0", "Cardiogenic shock"),
+        ("55822004", "Hyperlipidemia", "2020-05-15", "active", "E78.5", "Hyperlipidemia, unspecified"),
+        ("38341003", "Essential hypertension", "2018-03-10", "active", "I10", "Essential hypertension"),
+    ]
+    for code, display, onset, status, icd, icd_display in conditions:
+        resources.append(("Condition", make_condition(
+            patient_id, code, display, onset, status, icd, icd_display,
+            encounter_id=encounter_id)))
+
+    # --- Vital sign progression over 24 hours ---
+    base_vitals = {"hr": 105, "sbp": 95, "dbp": 60, "rr": 20, "temp": 37.2, "spo2": 95}
+    progression = [
+        # Pre-PCI deterioration
+        {"hour": 1, "deltas": {"hr": 10, "sbp": -8, "rr": 2, "spo2": -2}},
+        # Post-PCI improvement
+        {"hour": 3, "deltas": {"hr": -5, "sbp": 8, "rr": -1, "spo2": 1}},
+        {"hour": 6, "deltas": {"hr": -8, "sbp": 10, "rr": -2, "spo2": 2}},
+        {"hour": 12, "deltas": {"hr": -10, "sbp": 8, "rr": -3, "spo2": 2}},
+        {"hour": 18, "deltas": {"hr": -5, "sbp": 5, "rr": -1, "spo2": 1}},
+        {"hour": 24, "deltas": {"hr": -3, "sbp": 3, "rr": -1, "spo2": 1}},
+    ]
+    vitals = generate_vital_series(patient_id, encounter_id, admit_dt, 24, base_vitals, progression)
+    resources.extend(vitals)
+
+    # --- Labs ---
+    # Hour 0: Initial labs
+    h0 = admit_dt.isoformat()
+    resources.append(("Observation", make_observation(patient_id, "49563-0", "Troponin I", 12.5, "ng/mL", h0, ref_high=0.04, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "30934-4", "BNP", 450, "pg/mL", h0, ref_high=100, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 1.1, "mg/dL", h0, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2823-3", "Potassium", 4.5, "mmol/L", h0, ref_low=3.5, ref_high=5.1, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "6690-2", "WBC", 11.2, "10*3/uL", h0, ref_low=4.5, ref_high=11.0, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "718-7", "Hemoglobin", 13.5, "g/dL", h0, ref_low=13.5, ref_high=17.5, encounter_id=encounter_id)))
+
+    # Hour 3: Post-PCI labs
+    h3 = (admit_dt + timedelta(hours=3)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "49563-0", "Troponin I", 28.3, "ng/mL", h3, ref_high=0.04, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "32693-4", "Lactate", 2.8, "mmol/L", h3, ref_high=2.0, encounter_id=encounter_id)))
+
+    # Hour 6: Peak troponin
+    h6 = (admit_dt + timedelta(hours=6)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "49563-0", "Troponin I", 45.2, "ng/mL", h6, ref_high=0.04, encounter_id=encounter_id)))
+
+    # Hour 12: Declining troponin
+    h12 = (admit_dt + timedelta(hours=12)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "49563-0", "Troponin I", 32.1, "ng/mL", h12, ref_high=0.04, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "30934-4", "BNP", 380, "pg/mL", h12, ref_high=100, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 1.0, "mg/dL", h12, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+
+    # Hour 24: Further decline
+    h24 = (admit_dt + timedelta(hours=24)).isoformat()
+    resources.append(("Observation", make_observation(patient_id, "49563-0", "Troponin I", 15.5, "ng/mL", h24, ref_high=0.04, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "30934-4", "BNP", 290, "pg/mL", h24, ref_high=100, encounter_id=encounter_id)))
+    resources.append(("Observation", make_observation(patient_id, "2160-0", "Creatinine", 0.9, "mg/dL", h24, ref_low=0.7, ref_high=1.3, encounter_id=encounter_id)))
+
+    # --- Medications ---
+    h0_med = admit_dt.isoformat()
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "243670", "Aspirin",
+        "325mg by mouth stat", None,
+        encounter_id=encounter_id, authored_on=h0_med)))
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "32968", "Clopidogrel",
+        "600mg loading then 75mg daily", None,
+        encounter_id=encounter_id, authored_on=h0_med)))
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "5224", "Heparin",
+        "IV bolus per protocol", None,
+        encounter_id=encounter_id, authored_on=h0_med)))
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "259255", "Atorvastatin",
+        "80mg by mouth daily", None,
+        encounter_id=encounter_id, authored_on=h0_med)))
+    h6_med = (admit_dt + timedelta(hours=6)).isoformat()
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "866924", "Metoprolol",
+        "25mg by mouth twice daily", "BID",
+        encounter_id=encounter_id, authored_on=h6_med)))
+    h12_med = (admit_dt + timedelta(hours=12)).isoformat()
+    resources.append(("MedicationRequest", make_medication(
+        patient_id, "314076", "Lisinopril",
+        "5mg by mouth daily", "daily",
+        encounter_id=encounter_id, authored_on=h12_med)))
+
+    # --- CareTeam ---
+    resources.append(("CareTeam", make_care_team(
+        patient_id, encounter_id, "Cardiac Care Team",
+        [("Dr. Rodriguez", "309343006", "Physician"),
+         ("Dr. Kim", "17561000", "Cardiologist"),
+         ("RN Adams", "224535009", "Registered nurse")])))
+
+    return resources
+
+
+# =============================================================================
 # Patient Definitions
 # =============================================================================
 
