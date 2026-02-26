@@ -517,7 +517,8 @@ async def seed_inpatient_patient(profile: dict) -> dict:
     encounter_id = await find_or_create_inpatient_encounter(patient_id, encounter_resource)
 
     # 3. Generate linked resources with encounter_id
-    resources = await profile["scenario_creator"](patient_id, encounter_id)
+    admit_dt = profile.get("admit_dt")
+    resources = await profile["scenario_creator"](patient_id, encounter_id, admit_dt=admit_dt)
     print(f"  Generating {len(resources)} clinical resources...")
 
     # 4. Create resources
@@ -1964,6 +1965,49 @@ PATIENT_PROFILES = [
     },
 ]
 
+INPATIENT_PROFILES = [
+    {
+        "given": "Dorothy", "family": "Turner", "gender": "female", "birthDate": "1954-03-18",
+        "phone": "555-0201", "mrn": "MRN-20001",
+        "address": {"line": ["100 Hospital Drive"], "city": "Springfield", "state": "IL", "postalCode": "62701", "country": "US"},
+        "admit_dt": datetime(2026, 2, 24, 14, 0, tzinfo=timezone.utc),
+        "encounter_builder": lambda pid, adt=datetime(2026, 2, 24, 14, 0, tzinfo=timezone.utc): make_inpatient_encounter(pid, "Fever, altered mental status, UTI", "ED Bay 4", "EM", adt, "emd"),
+        "scenario_creator": create_sepsis_scenario,
+    },
+    {
+        "given": "Michael", "family": "Romano", "gender": "male", "birthDate": "1968-07-22",
+        "phone": "555-0202", "mrn": "MRN-20002",
+        "address": {"line": ["225 State Street"], "city": "Chicago", "state": "IL", "postalCode": "60601", "country": "US"},
+        "admit_dt": datetime(2026, 2, 25, 2, 30, tzinfo=timezone.utc),
+        "encounter_builder": lambda pid, adt=datetime(2026, 2, 25, 2, 30, tzinfo=timezone.utc): make_inpatient_encounter(pid, "Acute chest pain, ST elevation", "ED Bay 1 - Trauma/Cardiac", "EM", adt, "emd"),
+        "scenario_creator": create_cardiac_scenario,
+    },
+    {
+        "given": "Harold", "family": "Washington", "gender": "male", "birthDate": "1959-11-05",
+        "phone": "555-0203", "mrn": "MRN-20003",
+        "address": {"line": ["890 Lakeview Blvd"], "city": "Evanston", "state": "IL", "postalCode": "60201", "country": "US"},
+        "admit_dt": datetime(2026, 2, 24, 8, 0, tzinfo=timezone.utc),
+        "encounter_builder": lambda pid, adt=datetime(2026, 2, 24, 8, 0, tzinfo=timezone.utc): make_inpatient_encounter(pid, "Acute kidney injury, dehydration, hyperkalemia", "Medicine Ward 3B", "UR", adt),
+        "scenario_creator": create_renal_scenario,
+    },
+    {
+        "given": "Susan", "family": "Park", "gender": "female", "birthDate": "1971-05-14",
+        "phone": "555-0204", "mrn": "MRN-20004",
+        "address": {"line": ["412 Magnolia Court"], "city": "Naperville", "state": "IL", "postalCode": "60540", "country": "US"},
+        "admit_dt": datetime(2026, 2, 25, 10, 0, tzinfo=timezone.utc),
+        "encounter_builder": lambda pid, adt=datetime(2026, 2, 25, 10, 0, tzinfo=timezone.utc): make_inpatient_encounter(pid, "Acute dyspnea, pleuritic chest pain, hypoxia", "ED Bay 6", "EM", adt, "emd"),
+        "scenario_creator": create_pulmonary_scenario,
+    },
+    {
+        "given": "William", "family": "Harris", "gender": "male", "birthDate": "1951-01-28",
+        "phone": "555-0205", "mrn": "MRN-20005",
+        "address": {"line": ["567 Oak Park Avenue"], "city": "Aurora", "state": "IL", "postalCode": "60502", "country": "US"},
+        "admit_dt": datetime(2026, 2, 23, 20, 0, tzinfo=timezone.utc),
+        "encounter_builder": lambda pid, adt=datetime(2026, 2, 23, 20, 0, tzinfo=timezone.utc): make_inpatient_encounter(pid, "Sepsis, pneumonia, respiratory failure, AKI", "ICU Room 12", "EM", adt, "emd"),
+        "scenario_creator": create_multisystem_scenario,
+    },
+]
+
 
 async def find_or_create_patient(profile: dict) -> str:
     """Search for existing patient by name, or create new one."""
@@ -2033,11 +2077,17 @@ async def main():
     print("AgentEHR - Synthetic Patient Data Seeder")
     print("=" * 60)
     print(f"FHIR Server: {fhir_client.base_url}")
-    print(f"Patients to seed: {len(PATIENT_PROFILES)}")
+    print(f"Outpatient patients to seed: {len(PATIENT_PROFILES)}")
+    print(f"Inpatient scenarios to seed: {len(INPATIENT_PROFILES)}")
 
     results = []
     total_created = 0
     total_errors = 0
+
+    # Seed outpatient patients
+    print(f"\n{'='*60}")
+    print("Seeding Outpatient Patients")
+    print(f"{'='*60}")
 
     for profile in PATIENT_PROFILES:
         result = await seed_patient(profile)
@@ -2045,12 +2095,33 @@ async def main():
         total_created += result["created"]
         total_errors += result["errors"]
 
+    # Seed inpatient patients
+    print(f"\n{'='*60}")
+    print("Seeding Inpatient Encounters")
+    print(f"{'='*60}")
+    print(f"Inpatient scenarios to seed: {len(INPATIENT_PROFILES)}")
+
+    inpatient_results = []
+    for profile in INPATIENT_PROFILES:
+        result = await seed_inpatient_patient(profile)
+        inpatient_results.append(result)
+        total_created += result["created"]
+        total_errors += result["errors"]
+
+    # Summary
     print(f"\n{'='*60}")
     print("SUMMARY")
     print(f"{'='*60}")
+    print(f"\n  Outpatient patients:")
     for r in results:
         status = "OK" if r["errors"] == 0 else f"{r['errors']} ERRORS"
-        print(f"  {r['name']}: {r['created']} resources [{status}]")
+        print(f"    {r['name']}: {r['created']} resources [{status}]")
+
+    print(f"\n  Inpatient encounters:")
+    for r in inpatient_results:
+        status = "OK" if r["errors"] == 0 else f"{r['errors']} ERRORS"
+        print(f"    {r['name']}: {r['created']} resources, Encounter ID: {r['encounter_id']} [{status}]")
+
     print(f"\n  Total: {total_created} resources created, {total_errors} errors")
     print(f"{'='*60}")
 
