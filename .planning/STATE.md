@@ -4,7 +4,7 @@
 
 ## Current Phase: 3 — Supervisor Agent
 
-## Current Plan: 1 of 3
+## Current Plan: 2 of 3
 
 ## Phase Status
 
@@ -12,7 +12,7 @@
 |-------|------|--------|
 | 1 | FHIR Inpatient Resource Expansion | **COMPLETE** (4/4 plans) |
 | 2 | Inpatient Seed Data | **COMPLETE** (2/2 plans) |
-| 3 | Supervisor Agent | **IN PROGRESS** (0/3 plans) |
+| 3 | Supervisor Agent | **IN PROGRESS** (1/3 plans) |
 | 4 | Command Center Dashboard | Planned |
 | 5 | Knowledge Base & RAG | Planned |
 | 6 | Specialist Sub-Agents | Planned |
@@ -46,6 +46,10 @@
 - Client-side filtering for encounter idempotency (Medplum may not support reason-code:text search)
 - Added admit_dt parameter to all 5 scenario creators for timestamp coordination with encounter_builder
 - Lambda default argument capture used in INPATIENT_PROFILES to avoid Python late-binding closure issues
+- Used dataclasses (not pydantic) for PatientState and related models -- lightweight containers per research recommendation
+- Freshness thresholds: vitals 60s, meds/conditions/labs 300s per NFR-05
+- get_vitals_dict() maps directly to calculate_all_available_scores() parameter keys
+- Supervisor prompt uses {patient_clinical_summary} and {scores_summary} template placeholders for runtime injection
 
 ## Performance Metrics
 
@@ -57,13 +61,14 @@
 | 01 | 04 | 5min | 1 | 1 |
 | 02 | 01 | 11min | 2 | 1 |
 | 02 | 02 | 6min | 2 | 1 |
+| 03 | 01 | 19min | 2 | 2 |
 
 ## Blockers
 None.
 
 ## Last Session
-- **Stopped at:** Completed 02-02-PLAN.md (Phase 2 complete)
-- **Updated:** 2026-02-26T02:16:18Z
+- **Stopped at:** Completed 03-01-PLAN.md
+- **Updated:** 2026-02-26T04:31:28Z
 
 ---
-*Updated: 2026-02-26T02:16:18Z*
+*Updated: 2026-02-26T04:31:28Z*
